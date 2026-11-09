@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../widgets/charts.dart';
 import '../widgets/fields.dart';
 import 'today.dart' show yColor;
 
@@ -90,6 +91,8 @@ class _MonthScreenState extends State<MonthScreen> {
       ]),
     );
 
+    final summary = _MonthSummary(store: store, month: month);
+
     final cal = Section(title: '달력', child: _Calendar(store: store, month: month, openDay: widget.openDay));
 
     if (wide) {
@@ -97,13 +100,13 @@ class _MonthScreenState extends State<MonthScreen> {
         Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1200), child: Column(children: [
           header,
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Column(children: [affirmation, goals, cal])),
+            Expanded(child: Column(children: [summary, affirmation, goals, cal])),
             Expanded(child: todos),
           ]),
         ]))),
       ]);
     }
-    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [header, affirmation, goals, cal, todos]);
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [header, summary, affirmation, goals, cal, todos]);
   }
 }
 
@@ -152,5 +155,60 @@ class _Calendar extends StatelessWidget {
       const SizedBox(height: 6),
       Text('색이 진할수록 그날 Y-time을 많이 끝낸 날이에요', style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
     ]);
+  }
+}
+
+class _MonthSummary extends StatelessWidget {
+  const _MonthSummary({required this.store, required this.month});
+  final Store store;
+  final DateTime month;
+
+  @override
+  Widget build(BuildContext context) {
+    final last = DateTime(month.year, month.month + 1, 0).day;
+    final weekRates = List<List<double>>.generate(6, (_) => []);
+    final start = mondayOf(DateTime(month.year, month.month, 1));
+    var planned = 0, perfect = 0, streak = 0, best = 0;
+    final rates = <double>[];
+    for (var d = 1; d <= last; d++) {
+      final day = DateTime(month.year, month.month, d);
+      final r = store.hasDay(day) ? store.day(day).yDoneRate : null;
+      if (r != null) {
+        planned++;
+        rates.add(r);
+        weekRates[day.difference(start).inDays ~/ 7].add(r);
+        if (r >= 1) perfect++;
+      }
+      streak = (r != null && r >= 1) ? streak + 1 : 0;
+      if (streak > best) best = streak;
+    }
+    final avg = rates.isEmpty ? 0.0 : rates.reduce((a, b) => a + b) / rates.length;
+    final memoCount = store.memos().where((m) => m.date.startsWith(monthKey(month))).length;
+    final weeks = weekRates;
+    final nWeeks = ((DateTime(month.year, month.month, last).difference(start).inDays) ~/ 7) + 1;
+    return Section(
+      title: '이번 달 한눈에',
+      child: Column(children: [
+        Row(children: [
+          Ring(value: avg, color: yColor, size: 96, label: '평균 완료율'),
+          const SizedBox(width: 12),
+          Expanded(
+            child: MiniBars(
+              values: [for (var i = 0; i < nWeeks; i++) weeks[i].isEmpty ? null : weeks[i].reduce((a, b) => a + b) / weeks[i].length],
+              labels: [for (var i = 0; i < nWeeks; i++) '${i + 1}주'],
+              color: yColor,
+              height: 70,
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+          StatTile(value: '$planned일', label: '계획한 날'),
+          StatTile(value: '$perfect일', label: 'Y-time 완벽', color: yColor),
+          StatTile(value: '$best일', label: '최장 연속'),
+          StatTile(value: '$memoCount', label: '메모'),
+        ]),
+      ]),
+    );
   }
 }

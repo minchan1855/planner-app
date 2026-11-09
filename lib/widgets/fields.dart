@@ -13,6 +13,9 @@ class SaveField extends StatefulWidget {
     this.style,
     this.dense = false,
     this.keyboardType,
+    this.autofocus = false,
+    this.onSubmitted,
+    this.onFocusLost,
   });
 
   final String value;
@@ -23,6 +26,9 @@ class SaveField extends StatefulWidget {
   final TextStyle? style;
   final bool dense;
   final TextInputType? keyboardType;
+  final bool autofocus;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onFocusLost;
 
   @override
   State<SaveField> createState() => _SaveFieldState();
@@ -31,6 +37,14 @@ class SaveField extends StatefulWidget {
 class _SaveFieldState extends State<SaveField> {
   late final TextEditingController _c = TextEditingController(text: widget.value);
   final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) widget.onFocusLost?.call();
+    });
+  }
 
   @override
   void didUpdateWidget(SaveField old) {
@@ -51,6 +65,9 @@ class _SaveFieldState extends State<SaveField> {
       controller: _c,
       focusNode: _focus,
       onChanged: widget.onChanged,
+      onTapOutside: (_) => _focus.unfocus(),
+      autofocus: widget.autofocus,
+      onSubmitted: widget.onSubmitted,
       maxLines: widget.maxLines,
       minLines: 1,
       style: widget.style,
@@ -109,3 +126,6 @@ Future<String?> pickTime(BuildContext context, String? current, {bool allowClear
   if (r == null) return current;
   return '${r.hour.toString().padLeft(2, '0')}:${r.minute.toString().padLeft(2, '0')}';
 }
+
+/// 바깥을 누르면 키보드를 닫는 함수 (다른 입력창에서 씀)
+void unfocusOutside(PointerDownEvent _) => FocusManager.instance.primaryFocus?.unfocus();

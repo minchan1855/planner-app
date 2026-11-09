@@ -43,6 +43,8 @@ dependencies:
   uuid: ^4.6.0
   flutter_localizations:
     sdk: flutter
+  image_picker: ^1.2.4
+  speech_to_text: ^7.5.0
 
 dev_dependencies:
   flutter_test:

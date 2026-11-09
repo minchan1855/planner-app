@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../widgets/charts.dart';
 import '../widgets/fields.dart';
+import '../widgets/memo.dart';
 
 const yColor = Color(0xFFE5484D); // Y-time
 const bColor = Color(0xFF3E63DD); // B-time
@@ -43,6 +45,8 @@ class _DayView extends StatelessWidget {
     final plan = p;
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final isToday = dateKey(date) == dateKey(DateTime.now());
+    final week = store.week(mondayOf(date));
+    final weekFixed = week.fixed.where((s) => s.trim().isNotEmpty).toList();
 
     final header = Padding(
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
@@ -71,31 +75,143 @@ class _DayView extends StatelessWidget {
       ]),
     );
 
+    final summary = _Summary(plan: plan, memoCount: store.memos(date: plan.date).length);
+
     final affirmation = Section(
       title: '오늘의 확언',
       child: SaveField(value: plan.affirmation, hint: '오늘 나에게 해주고 싶은 말', maxLines: null, onChanged: (v) => edit((p) => p.affirmation = v)),
     );
 
+    final fixed = weekFixed.isEmpty
+        ? null
+        : Section(
+            title: '이번 주 고정할 일',
+            color: Colors.blueGrey,
+            child: Wrap(spacing: 8, runSpacing: 6, children: [
+              for (final f in weekFixed)
+                Chip(
+                  avatar: const Icon(Icons.push_pin, size: 16),
+                  label: Text(f),
+                  visualDensity: VisualDensity.compact,
+                ),
+            ]),
+          );
+
     final yBox = _TaskSection(type: 'Y', title: 'Y-time · 반드시 해야 할 일', color: yColor, plan: plan, edit: edit);
     final bBox = _TaskSection(type: 'B', title: 'B-time · 여유 있게 할 일', color: bColor, plan: plan, edit: edit);
     final dist = _Distribution(plan: plan, edit: edit);
     final hours = _HourTable(plan: plan, edit: edit, wide: wide);
+    final memos = _MemoSection(store: store, date: date);
 
     if (wide) {
       return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
         Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1200), child: Column(children: [
           header,
-          affirmation,
+          summary,
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: affirmation),
+            if (fixed != null) Expanded(child: fixed),
+          ]),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(flex: 3, child: yBox),
             Expanded(flex: 3, child: bBox),
             Expanded(flex: 2, child: dist),
           ]),
           hours,
+          memos,
         ]))),
       ]);
     }
-    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [header, affirmation, yBox, bBox, dist, hours]);
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [header, summary, affirmation, ?fixed, yBox, bBox, dist, hours, memos]);
+  }
+}
+
+/// 오늘 한눈에: 완료율 고리 + 시간 도넛 + 시간대 띠
+class _Summary extends StatelessWidget {
+  const _Summary({required this.plan, required this.memoCount});
+  final DayPlan plan;
+  final int memoCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final named = plan.tasks.where((t) => t.title.trim().isNotEmpty).toList();
+    final done = named.where((t) => t.done).length;
+    final rate = named.isEmpty ? 0.0 : done / named.length;
+    final total = plan.activeMinutes, y = plan.minutesOf('Y'), b = plan.minutesOf('B');
+    final free = (total - y - b).clamp(0, 24 * 60);
+    final planned = plan.slots.where((s) => s.plan.trim().isNotEmpty).length;
+    final hint = Theme.of(context).hintColor;
+
+    Color slotColor(HourSlot s) => switch (s.rating) {
+          'O' => const Color(0xFF30A46C),
+          '△' => const Color(0xFFF5A623),
+          'X' => yColor,
+          _ => s.plan.trim().isNotEmpty ? bColor.withValues(alpha: .35) : hint.withValues(alpha: .1),
+        };
+
+    return Section(
+      title: '오늘 한눈에',
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+          Ring(value: rate, color: yColor, size: 104, label: '할 일 $done/${named.length}'),
+          Donut(
+            size: 104,
+            stroke: 14,
+            parts: [(y.toDouble(), yColor), (b.toDouble(), bColor), (free.toDouble(), Colors.grey.shade300)],
+            center: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(fmtMinutes(total), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              Text('활동시간', style: TextStyle(fontSize: 11, color: hint)),
+            ]),
+          ),
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            StatTile(value: '$planned', label: '계획한 시간', color: bColor),
+            const SizedBox(height: 10),
+            StatTile(value: '$memoCount', label: '메모', color: voiceColor),
+          ]),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          for (final s in plan.slots)
+            Expanded(
+              child: Tooltip(
+                message: '${s.hour}시 ${s.plan}${s.rating.isEmpty ? '' : ' (${s.rating})'}',
+                child: Container(height: 14, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: slotColor(s), borderRadius: BorderRadius.circular(3))),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 4),
+        Row(children: [
+          Text('${plan.slots.isEmpty ? '' : plan.slots.first.hour}시', style: TextStyle(fontSize: 11, color: hint)),
+          const Spacer(),
+          for (final (c, l) in [(const Color(0xFF30A46C), 'O'), (const Color(0xFFF5A623), '△'), (yColor, 'X'), (bColor.withValues(alpha: .35), '계획')]) ...[
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2))),
+            Text(' $l  ', style: TextStyle(fontSize: 11, color: hint)),
+          ],
+          const Spacer(),
+          Text('${plan.slots.isEmpty ? '' : plan.slots.last.hour + 1}시', style: TextStyle(fontSize: 11, color: hint)),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _MemoSection extends StatelessWidget {
+  const _MemoSection({required this.store, required this.date});
+  final Store store;
+  final DateTime date;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = store.memos(date: dateKey(date)).reversed.toList();
+    return Section(
+      title: '오늘의 메모',
+      color: voiceColor,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        MemoButtons(store: store, date: date),
+        const SizedBox(height: 8),
+        for (final m in list) MemoCard(key: ValueKey(m.id), store: store, memo: m),
+      ]),
+    );
   }
 }
 
@@ -123,83 +239,134 @@ class _TaskSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text('＋ 버튼으로 할 일을 추가하세요', style: TextStyle(color: Theme.of(context).hintColor)),
             )
-          : Column(children: [for (final t in list) _TaskRow(key: ValueKey(t.id), task: t, color: color, edit: edit)]),
+          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              ReorderableListView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                proxyDecorator: (child, _, _) => Material(elevation: 4, borderRadius: BorderRadius.circular(8), child: child),
+                onReorderItem: (from, to) => edit((p) {
+                  final ordered = p.tasksOf(type);
+                  final t = ordered.removeAt(from);
+                  ordered.insert(to, t);
+                  for (var i = 0; i < ordered.length; i++) {
+                    ordered[i].priority = i + 1;
+                  }
+                }),
+                children: [
+                  for (var i = 0; i < list.length; i++)
+                    ReorderableDelayedDragStartListener(
+                      key: ValueKey(list[i].id),
+                      index: i,
+                      child: _TaskRow(task: list[i], color: color, edit: edit),
+                    ),
+                ],
+              ),
+              if (list.length > 1)
+                Text('꾹 눌러서 위아래로 옮기면 순위가 바뀌어요', style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor)),
+            ]),
     );
   }
 }
 
-class _TaskRow extends StatelessWidget {
-  const _TaskRow({super.key, required this.task, required this.color, required this.edit});
+class _TaskRow extends StatefulWidget {
+  const _TaskRow({required this.task, required this.color, required this.edit});
   final PlanTask task;
   final Color color;
   final void Function(void Function(DayPlan)) edit;
 
-  void _set(void Function(PlanTask t) f) => edit((p) => f(p.tasks.firstWhere((x) => x.id == task.id)));
+  @override
+  State<_TaskRow> createState() => _TaskRowState();
+}
+
+class _TaskRowState extends State<_TaskRow> {
+  late bool _editing = widget.task.title.isEmpty;
+
+  PlanTask get task => widget.task;
+  Color get color => widget.color;
+  void _set(void Function(PlanTask t) f) => widget.edit((p) => f(p.tasks.firstWhere((x) => x.id == task.id)));
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      PopupMenuButton<int>(
-        tooltip: '우선순위',
-        initialValue: task.priority,
-        onSelected: (v) => _set((t) => t.priority = v),
-        itemBuilder: (_) => [for (var i = 1; i <= 9; i++) PopupMenuItem(value: i, child: Text('우선순위 $i'))],
-        child: CircleAvatar(radius: 13, backgroundColor: color.withValues(alpha: .15), child: Text('${task.priority}', style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13))),
-      ),
-      const SizedBox(width: 8),
-      Expanded(
-        child: SaveField(
-          value: task.title,
-          hint: '할 일',
-          dense: true,
-          style: task.done ? const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey) : null,
-          onChanged: (v) => _set((t) => t.title = v),
+    final titleStyle = task.done ? const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey) : null;
+    return Container(
+      color: Colors.transparent,
+      child: Row(children: [
+        CircleAvatar(
+          radius: 13,
+          backgroundColor: color.withValues(alpha: .15),
+          child: Text('${task.priority}', style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13)),
         ),
-      ),
-      PopupMenuButton<int>(
-        tooltip: '예상시간',
-        onSelected: (v) => _set((t) => t.minutes = v),
-        itemBuilder: (_) => [for (final m in [10, 15, 20, 30, 45, 60, 90, 120, 180, 240]) PopupMenuItem(value: m, child: Text(fmtMinutes(m)))],
-        child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Text(fmtMinutes(task.minutes), style: const TextStyle(fontSize: 13))),
-      ),
-      IconButton(
-        tooltip: task.alarm == null ? '알람 맞추기' : '알람 ${task.alarm}',
-        visualDensity: VisualDensity.compact,
-        onPressed: () async {
-          if (task.alarm != null) {
-            final clear = await showDialog<bool>(
-              context: context,
-              builder: (c) => AlertDialog(
-                title: Text('알람 ${task.alarm}'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('알람 끄기')),
-                  TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('시간 바꾸기')),
-                ],
-              ),
-            );
-            if (clear == null) return;
-            if (clear) return _set((t) => t.alarm = null);
-          }
-          if (!context.mounted) return;
-          final r = await pickTime(context, task.alarm);
-          if (r != null) _set((t) => t.alarm = r);
-        },
-        icon: task.alarm == null
-            ? const Icon(Icons.alarm_add_outlined, size: 20)
-            : Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.alarm_on, size: 18, color: color),
-                const SizedBox(width: 2),
-                Text(task.alarm!, style: TextStyle(fontSize: 12, color: color)),
-              ]),
-      ),
-      Checkbox(value: task.done, activeColor: color, onChanged: (v) => _set((t) => t.done = v ?? false)),
-      IconButton(
-        tooltip: '삭제',
-        visualDensity: VisualDensity.compact,
-        icon: const Icon(Icons.close, size: 18),
-        onPressed: () => edit((p) => p.tasks.removeWhere((x) => x.id == task.id)),
-      ),
-    ]);
+        const SizedBox(width: 8),
+        Expanded(
+          child: _editing
+              ? SaveField(
+                  value: task.title,
+                  hint: '할 일',
+                  dense: true,
+                  autofocus: true,
+                  style: titleStyle,
+                  onChanged: (v) => _set((t) => t.title = v),
+                  onSubmitted: (_) => setState(() => _editing = false),
+                  onFocusLost: () {
+                    if (mounted) setState(() => _editing = false);
+                  },
+                )
+              : GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _editing = true),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Text(task.title.isEmpty ? '할 일' : task.title,
+                        style: (titleStyle ?? const TextStyle()).copyWith(color: task.title.isEmpty ? Theme.of(context).hintColor : null)),
+                  ),
+                ),
+        ),
+        PopupMenuButton<int>(
+          tooltip: '예상시간',
+          onSelected: (v) => _set((t) => t.minutes = v),
+          itemBuilder: (_) => [for (final m in [10, 15, 20, 30, 45, 60, 90, 120, 180, 240]) PopupMenuItem(value: m, child: Text(fmtMinutes(m)))],
+          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Text(fmtMinutes(task.minutes), style: const TextStyle(fontSize: 13))),
+        ),
+        IconButton(
+          tooltip: task.alarm == null ? '알람 맞추기' : '알람 ${task.alarm}',
+          visualDensity: VisualDensity.compact,
+          onPressed: () async {
+            if (task.alarm != null) {
+              final clear = await showDialog<bool>(
+                context: context,
+                builder: (c) => AlertDialog(
+                  title: Text('알람 ${task.alarm}'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('알람 끄기')),
+                    TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('시간 바꾸기')),
+                  ],
+                ),
+              );
+              if (clear == null) return;
+              if (clear) return _set((t) => t.alarm = null);
+            }
+            if (!context.mounted) return;
+            final r = await pickTime(context, task.alarm);
+            if (r != null) _set((t) => t.alarm = r);
+          },
+          icon: task.alarm == null
+              ? const Icon(Icons.alarm_add_outlined, size: 20)
+              : Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.alarm_on, size: 18, color: color),
+                  const SizedBox(width: 2),
+                  Text(task.alarm!, style: TextStyle(fontSize: 12, color: color)),
+                ]),
+        ),
+        Checkbox(value: task.done, activeColor: color, onChanged: (v) => _set((t) => t.done = v ?? false)),
+        IconButton(
+          tooltip: '삭제',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close, size: 18),
+          onPressed: () => widget.edit((p) => p.tasks.removeWhere((x) => x.id == task.id)),
+        ),
+      ]),
+    );
   }
 }
 

@@ -149,9 +149,9 @@ class _AccountState extends State<_Account> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const Text('휴대폰과 컴퓨터에서 같은 계정으로 로그인하면 기록이 똑같이 맞춰져요. 로그인 전 기록은 이 기기에만 있어요.'),
       const SizedBox(height: 12),
-      TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: '이메일', border: OutlineInputBorder())),
+      TextField(controller: _email, onTapOutside: unfocusOutside, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: '이메일', border: OutlineInputBorder())),
       const SizedBox(height: 8),
-      TextField(controller: _pw, obscureText: true, decoration: const InputDecoration(labelText: '비밀번호 (6자 이상)', border: OutlineInputBorder())),
+      TextField(controller: _pw, onTapOutside: unfocusOutside, obscureText: true, decoration: const InputDecoration(labelText: '비밀번호 (6자 이상)', border: OutlineInputBorder())),
       if (_msg != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg!, style: const TextStyle(color: Colors.red))),
       const SizedBox(height: 12),
       Row(children: [

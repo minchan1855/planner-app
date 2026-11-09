@@ -163,13 +163,15 @@ class WeekPlan {
   final String start; // 월요일 yyyy-MM-dd
   String affirmation;
   List<String> goals;
+  List<String> fixed; // 주간 고정할 일 (오늘 화면에 보여요)
   List<Habit> habits;
   String good;
   String bad;
   String next;
 
-  WeekPlan({required this.start, this.affirmation = '', List<String>? goals, List<Habit>? habits, this.good = '', this.bad = '', this.next = ''})
+  WeekPlan({required this.start, this.affirmation = '', List<String>? goals, List<String>? fixed, List<Habit>? habits, this.good = '', this.bad = '', this.next = ''})
       : goals = goals ?? [],
+        fixed = fixed ?? [],
         habits = habits ?? [];
 
   static String keyFor(DateTime monday) => 'week:${dateKey(monday)}';
@@ -179,6 +181,7 @@ class WeekPlan {
         start: j['start'],
         affirmation: j['affirmation'] ?? '',
         goals: _strList(j['goals']),
+        fixed: _strList(j['fixed']),
         habits: ((j['habits'] as List?) ?? []).map((e) => Habit.fromJson(Map<String, dynamic>.from(e))).toList(),
         good: j['good'] ?? '',
         bad: j['bad'] ?? '',
@@ -188,6 +191,7 @@ class WeekPlan {
         'start': start,
         'affirmation': affirmation,
         'goals': goals,
+        'fixed': fixed,
         'habits': habits.map((h) => h.toJson()).toList(),
         'good': good,
         'bad': bad,
@@ -238,6 +242,28 @@ class MonthPlan {
         'fixed': fixed,
         'weeks': weeks,
       };
+}
+
+// ───────────────── 메모 ─────────────────
+
+class Memo {
+  final String id;
+  final String date; // yyyy-MM-dd (어느 날의 메모인지)
+  String kind; // 'photo' | 'voice' | 'text'
+  String text;
+  String? photo; // Supabase 저장소 경로
+  final String created; // ISO 시각
+
+  Memo({String? id, required this.date, required this.kind, this.text = '', this.photo, String? created})
+      : id = id ?? newId(),
+        created = created ?? DateTime.now().toIso8601String();
+
+  String get key => 'memo:$id';
+  DateTime get createdAt => DateTime.tryParse(created) ?? DateTime.parse(date);
+
+  factory Memo.fromJson(Map<String, dynamic> j) =>
+      Memo(id: j['id'], date: j['date'], kind: j['kind'] ?? 'text', text: j['text'] ?? '', photo: j['photo'], created: j['created']);
+  Map<String, dynamic> toJson() => {'id': id, 'date': date, 'kind': kind, 'text': text, 'photo': photo, 'created': created};
 }
 
 // ───────────────── 설정 ─────────────────

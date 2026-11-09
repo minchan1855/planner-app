@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,10 +106,14 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   WeekPlan week(DateTime monday) {
     final j = _docs[WeekPlan.keyFor(monday)];
     if (j != null) return WeekPlan.fromJson(j);
-    // 지난주 습관 목록을 이어받습니다.
-    final prev = _docs[WeekPlan.keyFor(monday.subtract(const Duration(days: 7)))];
-    final habits = prev == null ? <Habit>[] : WeekPlan.fromJson(prev).habits.map((h) => Habit(name: h.name)).toList();
-    return WeekPlan(start: dateKey(monday), habits: habits);
+    // 지난주 습관과 주간 고정할 일을 이어받습니다.
+    final prevJ = _docs[WeekPlan.keyFor(monday.subtract(const Duration(days: 7)))];
+    final prev = prevJ == null ? null : WeekPlan.fromJson(prevJ);
+    return WeekPlan(
+      start: dateKey(monday),
+      habits: prev?.habits.map((h) => Habit(name: h.name)).toList(),
+      fixed: prev?.fixed.toList(),
+    );
   }
 
   void saveWeek(WeekPlan p) => put(p.key, p.toJson());
@@ -119,6 +124,62 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void saveMonth(MonthPlan p) => put(p.key, p.toJson());
+
+  // ── 메모 ──
+  List<Memo> memos({String? date}) {
+    final out = <Memo>[];
+    for (final e in _docs.entries) {
+      if (!e.key.startsWith('memo:') || e.value['_deleted'] == true) continue;
+      final m = Memo.fromJson(e.value);
+      if (date == null || m.date == date) out.add(m);
+    }
+    out.sort((a, b) => b.created.compareTo(a.created));
+    return out;
+  }
+
+  void saveMemo(Memo m) => put(m.key, m.toJson());
+
+  Future<void> deleteMemo(Memo m) async {
+    put(m.key, {...m.toJson(), '_deleted': true});
+    if (m.photo != null && user != null) {
+      try {
+        await Supabase.instance.client.storage.from('memos').remove([m.photo!]);
+      } catch (_) {}
+    }
+  }
+
+  /// 사진을 올리고 저장소 경로를 돌려줍니다. 로그인이 필요해요.
+  Future<String> uploadPhoto(String memoId, Uint8List bytes, String ext) async {
+    final u = user;
+    if (u == null) throw StateError('사진 메모는 설정 탭에서 로그인한 뒤에 쓸 수 있어요.');
+    final path = '${u.id}/$memoId.$ext';
+    await Supabase.instance.client.storage.from('memos').uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(contentType: ext == 'png' ? 'image/png' : 'image/jpeg', upsert: true),
+        );
+    _photoCache[path] = bytes;
+    return path;
+  }
+
+  final Map<String, Uint8List> _photoCache = {};
+  final Map<String, Future<Uint8List?>> _photoLoading = {};
+
+  /// 저장된 사진을 불러옵니다(한 번 받은 사진은 기억해 둡니다).
+  Future<Uint8List?> photo(String path) {
+    final c = _photoCache[path];
+    if (c != null) return Future.value(c);
+    return _photoLoading[path] ??= () async {
+      try {
+        final b = await Supabase.instance.client.storage.from('memos').download(path);
+        _photoCache[path] = b;
+        return b;
+      } catch (_) {
+        _photoLoading.remove(path);
+        return null;
+      }
+    }();
+  }
 
   // ── 동기화 ──
   Future<void> sync() async {

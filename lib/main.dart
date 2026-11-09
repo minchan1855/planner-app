@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'alarms.dart';
 import 'config.dart';
 import 'models.dart';
+import 'screens/memos.dart';
 import 'screens/month.dart';
 import 'screens/settings.dart';
 import 'screens/today.dart';
@@ -66,6 +67,7 @@ class _HomeShellState extends State<HomeShell> {
     (Icons.today_outlined, Icons.today, '오늘'),
     (Icons.view_week_outlined, Icons.view_week, '주간'),
     (Icons.calendar_month_outlined, Icons.calendar_month, '월간'),
+    (Icons.photo_library_outlined, Icons.photo_library, '메모'),
     (Icons.settings_outlined, Icons.settings, '설정'),
   ];
 
@@ -75,6 +77,7 @@ class _HomeShellState extends State<HomeShell> {
       TodayScreen(store: widget.store, selected: selectedDay),
       WeekScreen(store: widget.store, openDay: openDay),
       MonthScreen(store: widget.store, openDay: openDay),
+      MemosScreen(store: widget.store, openDay: openDay),
       SettingsScreen(store: widget.store),
     ];
     final wide = MediaQuery.sizeOf(context).width >= 900;
