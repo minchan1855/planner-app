@@ -22,12 +22,23 @@ const _palette = [
 Color blockColor(String key) => _palette[key.codeUnits.fold(0, (a, c) => (a * 31 + c) & 0x7fffffff) % _palette.length];
 
 class _Block {
-  _Block({required this.start, required this.end, required this.title, required this.color, this.task, this.slotHours = const [], this.rating = '', this.sub});
+  _Block({
+    required this.start,
+    required this.end,
+    required this.title,
+    required this.color,
+    this.task,
+    this.isPlan = false,
+    this.slotHours = const [],
+    this.rating = '',
+    this.sub,
+  });
   final int start; // 분
   final int end;
   final String title;
   final Color color;
   final PlanTask? task;
+  final bool isPlan; // ＋로 넣은 계획 (plan.blocks)
   final List<int> slotHours; // 할 일이 아닌 칸 글이면 그 시간들
   final String rating;
   final String? sub;
@@ -47,6 +58,22 @@ class DayTimetable extends StatelessWidget {
 
   List<_Block> _blocks() {
     final out = <_Block>[];
+    for (final t in plan.blocks) {
+      final a = parseHm(t.start), b = parseHm(t.end);
+      if (a == null || b == null || b <= a) continue;
+      out.add(
+        _Block(
+          start: math.max(a, firstHour * 60),
+          end: math.min(b, lastHour * 60),
+          title: t.title,
+          color: blockColor(t.title),
+          task: t,
+          isPlan: true,
+          rating: t.rating,
+          sub: t.actual.isEmpty ? t.rangeText : '${t.rangeText} · 실제: ${t.actual}',
+        ),
+      );
+    }
     for (final t in plan.tasks) {
       final a = parseHm(t.start), b = parseHm(t.end);
       if (t.title.trim().isEmpty || a == null || b == null || b <= a) continue;
@@ -165,7 +192,7 @@ class DayTimetable extends StatelessWidget {
                   child: _BlockView(
                     block: bl,
                     height: y(bl.end) - y(bl.start) - 2,
-                    onTap: () => bl.task != null ? _openTask(context, bl.task!) : _openSlot(context, bl.slotHours),
+                    onTap: () => bl.task != null ? _openTask(context, bl.task!, bl.isPlan) : _openSlot(context, bl.slotHours),
                   ),
                 ),
               if (isToday && nowMin >= firstHour * 60 && nowMin <= lastHour * 60)
@@ -193,25 +220,18 @@ class DayTimetable extends StatelessWidget {
     );
   }
 
-  Future<void> _openTask(BuildContext context, PlanTask t) async {
+  Future<void> _openTask(BuildContext context, PlanTask t, bool isPlan) async {
     await showDialog(
       context: context,
-      builder: (_) => _TaskDialog(task: t, edit: edit),
+      builder: (_) => isPlan ? _PlanDialog(task: t, edit: edit) : _TaskDialog(task: t, edit: edit),
     );
   }
 
-  /// ＋ 버튼: 시작 시간과 걸리는 시간을 골라 계획표에 적어요.
+  /// ＋ 버튼: 할 일, 시작 시간, 걸리는 시간을 골라 계획표에 넣어요.
   Future<void> openAdd(BuildContext context) async {
-    final r = await showDialog<(String, int, int)>(
-      context: context,
-      builder: (_) => _AddDialog(first: firstHour, last: lastHour),
-    );
+    final r = await showDialog<(String, String, String)>(context: context, builder: (_) => const _AddDialog());
     if (r == null) return;
-    edit((p) {
-      for (final s in p.slots) {
-        if (s.hour >= r.$2 && s.hour < r.$2 + r.$3) s.plan = r.$1;
-      }
-    });
+    edit((p) => p.blocks.add(PlanTask(type: 'P', title: r.$1, start: r.$2, end: r.$3)));
   }
 
   Future<void> _openSlot(BuildContext context, List<int> hours) async {
@@ -478,21 +498,19 @@ class _SlotDialogState extends State<_SlotDialog> {
 }
 
 class _AddDialog extends StatefulWidget {
-  const _AddDialog({required this.first, required this.last});
-  final int first;
-  final int last;
+  const _AddDialog();
   @override
   State<_AddDialog> createState() => _AddDialogState();
 }
 
 class _AddDialogState extends State<_AddDialog> {
   final _text = TextEditingController();
-  late int _start = DateTime.now().hour.clamp(widget.first, widget.last - 1) + (DateTime.now().hour + 1 < widget.last ? 1 : 0);
-  int _len = 1;
+  int _start = defaultStart();
+  int _len = 60;
 
   @override
   Widget build(BuildContext context) {
-    final maxLen = widget.last - _start;
+    final ok = _len > 0 && _start + _len <= 24 * 60;
     return AlertDialog(
       title: const Text('계획 추가'),
       content: SizedBox(
@@ -508,29 +526,13 @@ class _AddDialogState extends State<_AddDialog> {
               decoration: const InputDecoration(labelText: '해야 할 일', border: OutlineInputBorder()),
             ),
             const SizedBox(height: 14),
-            Row(
-              children: [
-                const Text('시작  '),
-                DropdownButton<int>(
-                  value: _start,
-                  items: [for (var h = widget.first; h < widget.last; h++) DropdownMenuItem(value: h, child: Text('$h시'))],
-                  onChanged: (v) => setState(() {
-                    _start = v ?? _start;
-                    if (_len > widget.last - _start) _len = widget.last - _start;
-                  }),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text('걸리는 시간'),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                for (final l in [1, 2, 3, 4, 5, 6])
-                  if (l <= maxLen) ChoiceChip(label: Text('$l시간'), selected: _len == l, onSelected: (_) => setState(() => _len = l)),
-              ],
+            TimeSpanPicker(
+              start: _start,
+              length: _len,
+              onChanged: (s, l) => setState(() {
+                _start = s;
+                _len = l;
+              }),
             ),
           ],
         ),
@@ -538,12 +540,97 @@ class _AddDialogState extends State<_AddDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
         FilledButton(
-          onPressed: () {
-            if (_text.text.trim().isEmpty) return;
-            Navigator.pop(context, (_text.text.trim(), _start, _len));
-          },
+          onPressed: ok
+              ? () {
+                  if (_text.text.trim().isEmpty) return;
+                  Navigator.pop(context, (_text.text.trim(), hm(_start), hm(_start + _len)));
+                }
+              : null,
           child: const Text('추가'),
         ),
+      ],
+    );
+  }
+}
+
+/// ＋로 넣은 계획 블록을 눌렀을 때: 글, 실제 한 일, 알람, 평가, 시간 바꾸기, 지우기
+class _PlanDialog extends StatefulWidget {
+  const _PlanDialog({required this.task, required this.edit});
+  final PlanTask task;
+  final void Function(void Function(DayPlan)) edit;
+  @override
+  State<_PlanDialog> createState() => _PlanDialogState();
+}
+
+class _PlanDialogState extends State<_PlanDialog> {
+  late PlanTask t = widget.task;
+  late final _title = TextEditingController(text: t.title);
+  late final _actual = TextEditingController(text: t.actual);
+
+  void _set(void Function(PlanTask t) f) {
+    setState(() => f(t));
+    widget.edit((p) {
+      final i = p.blocks.indexWhere((x) => x.id == t.id);
+      if (i >= 0) f(p.blocks[i]);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(t.rangeText ?? ''),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _title,
+              onTapOutside: unfocusOutside,
+              onChanged: (v) => _set((x) => x.title = v),
+              decoration: const InputDecoration(labelText: '해야 할 일', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _actual,
+              onTapOutside: unfocusOutside,
+              onChanged: (v) => _set((x) => x.actual = v),
+              decoration: const InputDecoration(labelText: '실제 한 일 (선택)', border: OutlineInputBorder()),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: t.alarm != null,
+              title: Text(t.alarm == null ? '알람' : '알람 ${t.alarm}'),
+              onChanged: (on) => _set((x) => x.alarm = on ? x.start : null),
+            ),
+            const Text('평가'),
+            const SizedBox(height: 6),
+            ratingPicker(t.rating, (r) => _set((x) => x.rating = r)),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            widget.edit((p) => p.blocks.removeWhere((x) => x.id == t.id));
+            Navigator.pop(context);
+          },
+          child: const Text('지우기', style: TextStyle(color: Colors.red)),
+        ),
+        TextButton(
+          onPressed: () async {
+            final r = await pickRange(context, start: t.start, end: t.end, clearable: false);
+            if (r == null || r.$1.isEmpty) return;
+            _set((x) {
+              if (x.alarm != null) x.alarm = r.$1;
+              x.start = r.$1;
+              x.end = r.$2;
+            });
+          },
+          child: const Text('시간 바꾸기'),
+        ),
+        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('닫기')),
       ],
     );
   }

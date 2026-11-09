@@ -31,10 +31,10 @@ class PlannerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     ThemeData theme(Brightness b) => ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3E63DD), brightness: b),
-          useMaterial3: true,
-          cardTheme: const CardThemeData(elevation: 0),
-        );
+      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3E63DD), brightness: b),
+      useMaterial3: true,
+      cardTheme: const CardThemeData(elevation: 0),
+    );
     return MaterialApp(
       title: '계획표',
       debugShowCheckedModeBanner: false,
@@ -58,6 +58,21 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int tab = 0;
   final selectedDay = ValueNotifier(dateOnly(DateTime.now()));
+
+  @override
+  void initState() {
+    super.initState();
+    // 카카오 연결을 마치고 웹으로 돌아왔을 때 (주소 끝 ?kakao=ok)
+    final k = Uri.base.queryParameters['kakao'];
+    if (k != null) {
+      tab = 4;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        const words = {'ok': '카카오톡이 연결됐어요! 카톡 "나와의 채팅"에 확인 메시지를 보냈어요.', 'denied': '카카오톡 연결을 취소했어요.', 'expired': '연결 시간이 지났어요. 다시 눌러주세요.'};
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(words[k] ?? '카카오톡 연결에 실패했어요. 다시 시도해 주세요.'), duration: const Duration(seconds: 6)));
+      });
+    }
+  }
 
   void openDay(DateTime d) {
     selectedDay.value = dateOnly(d);
@@ -101,19 +116,23 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Widget _scaffold(BuildContext context, List<Widget> pages, bool wide) {
-    final body = SafeArea(child: IndexedStack(index: tab, children: pages));
+    final body = SafeArea(
+      child: IndexedStack(index: tab, children: pages),
+    );
     if (wide) {
       return Scaffold(
-        body: Row(children: [
-          NavigationRail(
-            selectedIndex: tab,
-            onDestinationSelected: (i) => setState(() => tab = i),
-            labelType: NavigationRailLabelType.all,
-            destinations: [for (final d in _dest) NavigationRailDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: Text(d.$3))],
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(child: body),
-        ]),
+        body: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: tab,
+              onDestinationSelected: (i) => setState(() => tab = i),
+              labelType: NavigationRailLabelType.all,
+              destinations: [for (final d in _dest) NavigationRailDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: Text(d.$3))],
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(child: body),
+          ],
+        ),
       );
     }
     return Scaffold(

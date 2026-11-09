@@ -572,22 +572,6 @@ class _TaskRowState extends State<_TaskRow> {
                     ),
                   ),
           ),
-          if (task.rangeText == null)
-            PopupMenuButton<int>(
-              tooltip: '예상시간',
-              onSelected: (v) => _set((t) => t.minutes = v),
-              itemBuilder: (_) => [
-                for (final m in [10, 15, 20, 30, 45, 60, 90, 120, 180, 240])
-                  PopupMenuItem(value: m, child: Text(fmtMinutes(m))),
-              ],
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Text(
-                  fmtMinutes(task.minutes),
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ),
-            ),
           InkWell(
             borderRadius: BorderRadius.circular(8),
             onTap: () async {

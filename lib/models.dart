@@ -48,9 +48,10 @@ class PlanTask {
   String? start; // "HH:mm" 언제부터
   String? end; // "HH:mm" 언제까지
   String rating = ''; // '', 'O', '△', 'X'
+  String actual = ''; // 실제 한 일 (계획표 블록에서 씀)
 
   PlanTask({String? id, required this.type, this.priority = 1, this.title = '', this.minutes = 30, this.done = false, this.alarm, this.start, this.end})
-      : id = id ?? newId();
+    : id = id ?? newId();
 
   /// 시작~끝 시간이 겹치는 시(hour) 목록
   List<int> get hours {
@@ -61,19 +62,39 @@ class PlanTask {
 
   String? get rangeText => start == null || end == null ? null : '$start~$end';
 
-  factory PlanTask.fromJson(Map<String, dynamic> j) => PlanTask(
-        id: j['id'],
-        type: j['type'] ?? 'Y',
-        priority: j['priority'] ?? 1,
-        title: j['title'] ?? '',
-        minutes: j['minutes'] ?? 30,
-        done: j['done'] ?? false,
-        alarm: j['alarm'],
-        start: j['start'],
-        end: j['end'],
-      )..rating = j['rating'] ?? '';
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'type': type, 'priority': priority, 'title': title, 'minutes': minutes, 'done': done, 'alarm': alarm, 'start': start, 'end': end, 'rating': rating};
+  /// 시작~끝 시간으로 정한 분. 시간을 안 정했으면 0.
+  int get planned {
+    final a = parseHm(start), b = parseHm(end);
+    return a == null || b == null || b <= a ? 0 : b - a;
+  }
+
+  factory PlanTask.fromJson(Map<String, dynamic> j) =>
+      PlanTask(
+          id: j['id'],
+          type: j['type'] ?? 'Y',
+          priority: j['priority'] ?? 1,
+          title: j['title'] ?? '',
+          minutes: j['minutes'] ?? 30,
+          done: j['done'] ?? false,
+          alarm: j['alarm'],
+          start: j['start'],
+          end: j['end'],
+        )
+        ..rating = j['rating'] ?? ''
+        ..actual = j['actual'] ?? '';
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type,
+    'priority': priority,
+    'title': title,
+    'minutes': minutes,
+    'done': done,
+    'alarm': alarm,
+    'start': start,
+    'end': end,
+    'rating': rating,
+    'actual': actual,
+  };
 }
 
 class HourSlot {
@@ -87,15 +108,14 @@ class HourSlot {
   HourSlot({required this.hour, this.plan = '', this.actual = '', this.rating = '', this.review = '', this.alarm = false});
 
   factory HourSlot.fromJson(Map<String, dynamic> j) => HourSlot(
-        hour: j['hour'],
-        plan: j['plan'] ?? '',
-        actual: j['actual'] ?? '',
-        rating: j['rating'] ?? '',
-        review: j['review'] ?? '',
-        alarm: j['alarm'] ?? false,
-      );
-  Map<String, dynamic> toJson() =>
-      {'hour': hour, 'plan': plan, 'actual': actual, 'rating': rating, 'review': review, 'alarm': alarm};
+    hour: j['hour'],
+    plan: j['plan'] ?? '',
+    actual: j['actual'] ?? '',
+    rating: j['rating'] ?? '',
+    review: j['review'] ?? '',
+    alarm: j['alarm'] ?? false,
+  );
+  Map<String, dynamic> toJson() => {'hour': hour, 'plan': plan, 'actual': actual, 'rating': rating, 'review': review, 'alarm': alarm};
 }
 
 class DayPlan {
@@ -105,36 +125,47 @@ class DayPlan {
   String sleep;
   List<PlanTask> tasks;
   List<HourSlot> slots;
+  List<PlanTask> blocks; // 오늘 계획표에 ＋로 넣은 계획 (할 일 목록과 따로)
 
-  DayPlan({required this.date, this.affirmation = '', this.wake = '06:00', this.sleep = '23:00', List<PlanTask>? tasks, List<HourSlot>? slots})
-      : tasks = tasks ?? [],
-        slots = slots ?? [];
+  DayPlan({
+    required this.date,
+    this.affirmation = '',
+    this.wake = '06:00',
+    this.sleep = '23:00',
+    List<PlanTask>? tasks,
+    List<HourSlot>? slots,
+    List<PlanTask>? blocks,
+  }) : tasks = tasks ?? [],
+       slots = slots ?? [],
+       blocks = blocks ?? [];
 
   static String keyFor(DateTime d) => 'day:${dateKey(d)}';
   String get key => 'day:$date';
   DateTime get day => DateTime.parse(date);
 
   factory DayPlan.empty(DateTime d, {int startHour = 5, int endHour = 24}) => DayPlan(
-        date: dateKey(d),
-        slots: [for (var h = startHour; h < endHour; h++) HourSlot(hour: h)],
-      );
+    date: dateKey(d),
+    slots: [for (var h = startHour; h < endHour; h++) HourSlot(hour: h)],
+  );
 
   factory DayPlan.fromJson(Map<String, dynamic> j) => DayPlan(
-        date: j['date'],
-        affirmation: j['affirmation'] ?? '',
-        wake: j['wake'] ?? '06:00',
-        sleep: j['sleep'] ?? '23:00',
-        tasks: ((j['tasks'] as List?) ?? []).map((e) => PlanTask.fromJson(Map<String, dynamic>.from(e))).toList(),
-        slots: ((j['slots'] as List?) ?? []).map((e) => HourSlot.fromJson(Map<String, dynamic>.from(e))).toList(),
-      );
+    date: j['date'],
+    affirmation: j['affirmation'] ?? '',
+    wake: j['wake'] ?? '06:00',
+    sleep: j['sleep'] ?? '23:00',
+    tasks: ((j['tasks'] as List?) ?? []).map((e) => PlanTask.fromJson(Map<String, dynamic>.from(e))).toList(),
+    slots: ((j['slots'] as List?) ?? []).map((e) => HourSlot.fromJson(Map<String, dynamic>.from(e))).toList(),
+    blocks: ((j['blocks'] as List?) ?? []).map((e) => PlanTask.fromJson(Map<String, dynamic>.from(e))).toList(),
+  );
   Map<String, dynamic> toJson() => {
-        'date': date,
-        'affirmation': affirmation,
-        'wake': wake,
-        'sleep': sleep,
-        'tasks': tasks.map((t) => t.toJson()).toList(),
-        'slots': slots.map((s) => s.toJson()).toList(),
-      };
+    'date': date,
+    'affirmation': affirmation,
+    'wake': wake,
+    'sleep': sleep,
+    'tasks': tasks.map((t) => t.toJson()).toList(),
+    'slots': slots.map((s) => s.toJson()).toList(),
+    'blocks': blocks.map((t) => t.toJson()).toList(),
+  };
 
   List<PlanTask> tasksOf(String type) => tasks.where((t) => t.type == type).toList()..sort((a, b) => a.priority.compareTo(b.priority));
 
@@ -146,7 +177,7 @@ class DayPlan {
     return d;
   }
 
-  int minutesOf(String type) => tasks.where((t) => t.type == type).fold(0, (a, t) => a + t.minutes);
+  int minutesOf(String type) => tasks.where((t) => t.type == type).fold(0, (a, t) => a + t.planned);
 
   /// Y-time 완료율 (0~1). 할 일이 없으면 null.
   double? get yDoneRate {
@@ -162,14 +193,9 @@ class Habit {
   String id;
   String name;
   List<bool> checks; // 월~일 7칸
-  Habit({String? id, this.name = '', List<bool>? checks})
-      : id = id ?? newId(),
-        checks = checks ?? List.filled(7, false);
-  factory Habit.fromJson(Map<String, dynamic> j) => Habit(
-        id: j['id'],
-        name: j['name'] ?? '',
-        checks: ((j['checks'] as List?) ?? List.filled(7, false)).map((e) => e == true).toList(),
-      );
+  Habit({String? id, this.name = '', List<bool>? checks}) : id = id ?? newId(), checks = checks ?? List.filled(7, false);
+  factory Habit.fromJson(Map<String, dynamic> j) =>
+      Habit(id: j['id'], name: j['name'] ?? '', checks: ((j['checks'] as List?) ?? List.filled(7, false)).map((e) => e == true).toList());
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'checks': checks};
 }
 
@@ -184,37 +210,46 @@ class WeekPlan {
   String bad;
   String next;
 
-  WeekPlan({required this.start, this.affirmation = '', List<String>? goals, List<String>? fixed, List<String>? days, List<Habit>? habits, this.good = '', this.bad = '', this.next = ''})
-      : goals = goals ?? [],
-        fixed = fixed ?? [],
-        days = days != null && days.length == 7 ? days : List.filled(7, ''),
-        habits = habits ?? [];
+  WeekPlan({
+    required this.start,
+    this.affirmation = '',
+    List<String>? goals,
+    List<String>? fixed,
+    List<String>? days,
+    List<Habit>? habits,
+    this.good = '',
+    this.bad = '',
+    this.next = '',
+  }) : goals = goals ?? [],
+       fixed = fixed ?? [],
+       days = days != null && days.length == 7 ? days : List.filled(7, ''),
+       habits = habits ?? [];
 
   static String keyFor(DateTime monday) => 'week:${dateKey(monday)}';
   String get key => 'week:$start';
 
   factory WeekPlan.fromJson(Map<String, dynamic> j) => WeekPlan(
-        start: j['start'],
-        affirmation: j['affirmation'] ?? '',
-        goals: _strList(j['goals']),
-        fixed: _strList(j['fixed']),
-        days: _strList(j['days']),
-        habits: ((j['habits'] as List?) ?? []).map((e) => Habit.fromJson(Map<String, dynamic>.from(e))).toList(),
-        good: j['good'] ?? '',
-        bad: j['bad'] ?? '',
-        next: j['next'] ?? '',
-      );
+    start: j['start'],
+    affirmation: j['affirmation'] ?? '',
+    goals: _strList(j['goals']),
+    fixed: _strList(j['fixed']),
+    days: _strList(j['days']),
+    habits: ((j['habits'] as List?) ?? []).map((e) => Habit.fromJson(Map<String, dynamic>.from(e))).toList(),
+    good: j['good'] ?? '',
+    bad: j['bad'] ?? '',
+    next: j['next'] ?? '',
+  );
   Map<String, dynamic> toJson() => {
-        'start': start,
-        'affirmation': affirmation,
-        'goals': goals,
-        'fixed': fixed,
-        'days': days,
-        'habits': habits.map((h) => h.toJson()).toList(),
-        'good': good,
-        'bad': bad,
-        'next': next,
-      };
+    'start': start,
+    'affirmation': affirmation,
+    'goals': goals,
+    'fixed': fixed,
+    'days': days,
+    'habits': habits.map((h) => h.toJson()).toList(),
+    'good': good,
+    'bad': bad,
+    'next': next,
+  };
 }
 
 // ───────────────── 월간 계획 ─────────────────
@@ -236,9 +271,9 @@ class MonthPlan {
   List<List<String>> weeks; // 1~5주차 할 일
 
   MonthPlan({required this.month, this.affirmation = '', List<MonthGoal>? goals, List<String>? fixed, List<List<String>>? weeks})
-      : goals = goals ?? List.generate(3, (_) => MonthGoal()),
-        fixed = fixed ?? [],
-        weeks = weeks ?? List.generate(5, (_) => <String>[]);
+    : goals = goals ?? List.generate(3, (_) => MonthGoal()),
+      fixed = fixed ?? [],
+      weeks = weeks ?? List.generate(5, (_) => <String>[]);
 
   static String keyFor(DateTime d) => 'month:${monthKey(d)}';
   String get key => 'month:$month';
@@ -254,13 +289,7 @@ class MonthPlan {
     }
     return MonthPlan(month: j['month'], affirmation: j['affirmation'] ?? '', goals: goals, fixed: _strList(j['fixed']), weeks: weeks);
   }
-  Map<String, dynamic> toJson() => {
-        'month': month,
-        'affirmation': affirmation,
-        'goals': goals.map((g) => g.toJson()).toList(),
-        'fixed': fixed,
-        'weeks': weeks,
-      };
+  Map<String, dynamic> toJson() => {'month': month, 'affirmation': affirmation, 'goals': goals.map((g) => g.toJson()).toList(), 'fixed': fixed, 'weeks': weeks};
 }
 
 // ───────────────── 메모 ─────────────────
@@ -274,8 +303,8 @@ class Memo {
   final String created; // ISO 시각
 
   Memo({String? id, required this.date, required this.kind, this.text = '', this.photo, String? created})
-      : id = id ?? newId(),
-        created = created ?? DateTime.now().toIso8601String();
+    : id = id ?? newId(),
+      created = created ?? DateTime.now().toIso8601String();
 
   String get key => 'memo:$id';
   DateTime get createdAt => DateTime.tryParse(created) ?? DateTime.parse(date);
@@ -292,15 +321,22 @@ class AppSettings {
   int endHour;
   int leadMinutes; // 알람을 몇 분 전에 울릴지
   bool weeklyReviewAlarm; // 일요일 21시 주간 회고 알람
+  bool kakaoAlarm; // 카톡 나에게 보내기로도 알림
 
-  AppSettings({this.startHour = 5, this.endHour = 24, this.leadMinutes = 10, this.weeklyReviewAlarm = true});
+  AppSettings({this.startHour = 5, this.endHour = 24, this.leadMinutes = 10, this.weeklyReviewAlarm = true, this.kakaoAlarm = true});
   static const key = 'settings';
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
-        startHour: j['startHour'] ?? 5,
-        endHour: j['endHour'] ?? 24,
-        leadMinutes: j['leadMinutes'] ?? 10,
-        weeklyReviewAlarm: j['weeklyReviewAlarm'] ?? true,
-      );
-  Map<String, dynamic> toJson() =>
-      {'startHour': startHour, 'endHour': endHour, 'leadMinutes': leadMinutes, 'weeklyReviewAlarm': weeklyReviewAlarm};
+    startHour: j['startHour'] ?? 5,
+    endHour: j['endHour'] ?? 24,
+    leadMinutes: j['leadMinutes'] ?? 10,
+    weeklyReviewAlarm: j['weeklyReviewAlarm'] ?? true,
+    kakaoAlarm: j['kakaoAlarm'] ?? true,
+  );
+  Map<String, dynamic> toJson() => {
+    'startHour': startHour,
+    'endHour': endHour,
+    'leadMinutes': leadMinutes,
+    'weeklyReviewAlarm': weeklyReviewAlarm,
+    'kakaoAlarm': kakaoAlarm,
+  };
 }

@@ -262,7 +262,7 @@ class _WeekSummary extends StatelessWidget {
       final ys = p.tasksOf('Y').where((t) => t.title.trim().isNotEmpty).toList();
       all += ys.length;
       done += ys.where((t) => t.done).length;
-      minutes += p.tasks.where((t) => t.done).fold(0, (a, t) => a + t.minutes);
+      minutes += p.tasks.where((t) => t.done).fold(0, (a, t) => a + t.planned);
       rates.add(ys.isEmpty ? null : ys.where((t) => t.done).length / ys.length);
     }
     final todayIdx = DateTime.now().difference(monday).inDays;
