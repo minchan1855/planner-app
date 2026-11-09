@@ -122,10 +122,86 @@ class Section extends StatelessWidget {
 Future<String?> pickTime(BuildContext context, String? current, {bool allowClear = false}) async {
   final m = current == null ? null : RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(current);
   final init = m == null ? TimeOfDay.now() : TimeOfDay(hour: int.parse(m[1]!), minute: int.parse(m[2]!));
-  final r = await showTimePicker(context: context, initialTime: init);
+  final r = await showTimePicker(
+    context: context,
+    initialTime: init,
+    initialEntryMode: TimePickerEntryMode.inputOnly,
+    builder: (c, child) => MediaQuery(data: MediaQuery.of(c).copyWith(alwaysUse24HourFormat: true), child: child!),
+  );
   if (r == null) return current;
   return '${r.hour.toString().padLeft(2, '0')}:${r.minute.toString().padLeft(2, '0')}';
 }
 
 /// 바깥을 누르면 키보드를 닫는 함수 (다른 입력창에서 씀)
 void unfocusOutside(PointerDownEvent _) => FocusManager.instance.primaryFocus?.unfocus();
+
+/// "몇 시부터 몇 시까지" 숫자로 적어서 고르기. 지우기를 누르면 ('', '')를 돌려줘요.
+Future<(String, String)?> pickRange(BuildContext context, {String? start, String? end}) {
+  return showDialog<(String, String)>(context: context, builder: (_) => _RangeDialog(start: start, end: end));
+}
+
+class _RangeDialog extends StatefulWidget {
+  const _RangeDialog({this.start, this.end});
+  final String? start;
+  final String? end;
+  @override
+  State<_RangeDialog> createState() => _RangeDialogState();
+}
+
+class _RangeDialogState extends State<_RangeDialog> {
+  late final _a = TextEditingController(text: widget.start ?? '');
+  late final _b = TextEditingController(text: widget.end ?? '');
+  String? _err;
+
+  /// "9", "930", "9:30", "0930" → "09:30"
+  static String? norm(String s) {
+    s = s.trim().replaceAll(RegExp(r'[^0-9:]'), '');
+    if (s.isEmpty) return null;
+    int h, m;
+    if (s.contains(':')) {
+      final p = s.split(':');
+      h = int.tryParse(p[0]) ?? -1;
+      m = int.tryParse(p.length > 1 && p[1].isNotEmpty ? p[1] : '0') ?? -1;
+    } else if (s.length <= 2) {
+      h = int.parse(s);
+      m = 0;
+    } else {
+      h = int.parse(s.substring(0, s.length - 2));
+      m = int.parse(s.substring(s.length - 2));
+    }
+    if (h < 0 || h > 24 || m < 0 || m > 59 || (h == 24 && m > 0)) return null;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  void _ok() {
+    final a = norm(_a.text), b = norm(_b.text);
+    if (a == null || b == null) return setState(() => _err = '시간을 9:00 이나 0930 처럼 적어주세요');
+    if (parseHmLocal(b) <= parseHmLocal(a)) return setState(() => _err = '끝나는 시간이 시작보다 늦어야 해요');
+    Navigator.pop(context, (a, b));
+  }
+
+  static int parseHmLocal(String s) => int.parse(s.substring(0, 2)) * 60 + int.parse(s.substring(3));
+
+  @override
+  Widget build(BuildContext context) {
+    InputDecoration dec(String l) => InputDecoration(labelText: l, hintText: '예: 9:00', border: const OutlineInputBorder());
+    return AlertDialog(
+      title: const Text('언제 할까요?'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          Expanded(child: TextField(controller: _a, autofocus: true, keyboardType: TextInputType.datetime, decoration: dec('시작'), onTapOutside: unfocusOutside)),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('~')),
+          Expanded(child: TextField(controller: _b, keyboardType: TextInputType.datetime, decoration: dec('끝'), onTapOutside: unfocusOutside, onSubmitted: (_) => _ok())),
+        ]),
+        if (_err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_err!, style: const TextStyle(color: Colors.red))),
+        const SizedBox(height: 8),
+        Text('오늘 계획표의 그 시간 칸에도 같이 적혀요', style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
+      ]),
+      actions: [
+        if (widget.start != null) TextButton(onPressed: () => Navigator.pop(context, ('', '')), child: const Text('시간 지우기')),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+        FilledButton(onPressed: _ok, child: const Text('확인')),
+      ],
+    );
+  }
+}

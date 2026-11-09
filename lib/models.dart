@@ -44,10 +44,21 @@ class PlanTask {
   String title;
   int minutes;
   bool done;
-  String? alarm; // "HH:mm"
+  String? alarm; // "HH:mm" (예전 버전 호환용)
+  String? start; // "HH:mm" 언제부터
+  String? end; // "HH:mm" 언제까지
 
-  PlanTask({String? id, required this.type, this.priority = 1, this.title = '', this.minutes = 30, this.done = false, this.alarm})
+  PlanTask({String? id, required this.type, this.priority = 1, this.title = '', this.minutes = 30, this.done = false, this.alarm, this.start, this.end})
       : id = id ?? newId();
+
+  /// 시작~끝 시간이 겹치는 시(hour) 목록
+  List<int> get hours {
+    final a = parseHm(start), b = parseHm(end);
+    if (a == null || b == null || b <= a) return [];
+    return [for (var h = a ~/ 60; h * 60 < b; h++) h];
+  }
+
+  String? get rangeText => start == null || end == null ? null : '$start~$end';
 
   factory PlanTask.fromJson(Map<String, dynamic> j) => PlanTask(
         id: j['id'],
@@ -57,9 +68,11 @@ class PlanTask {
         minutes: j['minutes'] ?? 30,
         done: j['done'] ?? false,
         alarm: j['alarm'],
+        start: j['start'],
+        end: j['end'],
       );
   Map<String, dynamic> toJson() =>
-      {'id': id, 'type': type, 'priority': priority, 'title': title, 'minutes': minutes, 'done': done, 'alarm': alarm};
+      {'id': id, 'type': type, 'priority': priority, 'title': title, 'minutes': minutes, 'done': done, 'alarm': alarm, 'start': start, 'end': end};
 }
 
 class HourSlot {
@@ -164,14 +177,16 @@ class WeekPlan {
   String affirmation;
   List<String> goals;
   List<String> fixed; // 주간 고정할 일 (오늘 화면에 보여요)
+  List<String> days; // 요일별 계획 (월~일 7칸, 오늘 화면에 보여요)
   List<Habit> habits;
   String good;
   String bad;
   String next;
 
-  WeekPlan({required this.start, this.affirmation = '', List<String>? goals, List<String>? fixed, List<Habit>? habits, this.good = '', this.bad = '', this.next = ''})
+  WeekPlan({required this.start, this.affirmation = '', List<String>? goals, List<String>? fixed, List<String>? days, List<Habit>? habits, this.good = '', this.bad = '', this.next = ''})
       : goals = goals ?? [],
         fixed = fixed ?? [],
+        days = days != null && days.length == 7 ? days : List.filled(7, ''),
         habits = habits ?? [];
 
   static String keyFor(DateTime monday) => 'week:${dateKey(monday)}';
@@ -182,6 +197,7 @@ class WeekPlan {
         affirmation: j['affirmation'] ?? '',
         goals: _strList(j['goals']),
         fixed: _strList(j['fixed']),
+        days: _strList(j['days']),
         habits: ((j['habits'] as List?) ?? []).map((e) => Habit.fromJson(Map<String, dynamic>.from(e))).toList(),
         good: j['good'] ?? '',
         bad: j['bad'] ?? '',
@@ -192,6 +208,7 @@ class WeekPlan {
         'affirmation': affirmation,
         'goals': goals,
         'fixed': fixed,
+        'days': days,
         'habits': habits.map((h) => h.toJson()).toList(),
         'good': good,
         'bad': bad,
@@ -203,10 +220,11 @@ class WeekPlan {
 
 class MonthGoal {
   String text;
-  String reward;
-  MonthGoal({this.text = '', this.reward = ''});
-  factory MonthGoal.fromJson(Map<String, dynamic> j) => MonthGoal(text: j['text'] ?? '', reward: j['reward'] ?? '');
-  Map<String, dynamic> toJson() => {'text': text, 'reward': reward};
+  String reward; // 예전 버전 호환용
+  int level; // 보상도 0~5단계
+  MonthGoal({this.text = '', this.reward = '', this.level = 0});
+  factory MonthGoal.fromJson(Map<String, dynamic> j) => MonthGoal(text: j['text'] ?? '', reward: j['reward'] ?? '', level: j['level'] ?? 0);
+  Map<String, dynamic> toJson() => {'text': text, 'reward': reward, 'level': level};
 }
 
 class MonthPlan {

@@ -64,15 +64,25 @@ class _MonthScreenState extends State<MonthScreen> {
 
     final goals = Section(
       title: '월 목표',
+      trailing: Text('보상도', style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
       child: Column(children: [
         for (var i = 0; i < 3; i++)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(children: [
               Text('${i + 1}  ', style: const TextStyle(fontWeight: FontWeight.w700)),
-              Expanded(flex: 3, child: SaveField(key: ValueKey('mg-$mk-$i'), value: m.goals[i].text, dense: true, hint: '목표', onChanged: (v) => edit((x) => x.goals[i].text = v))),
-              const SizedBox(width: 8),
-              Expanded(flex: 2, child: SaveField(key: ValueKey('mr-$mk-$i'), value: m.goals[i].reward, dense: true, hint: '보상수치', onChanged: (v) => edit((x) => x.goals[i].reward = v))),
+              Expanded(child: SaveField(key: ValueKey('mg-$mk-$i'), value: m.goals[i].text, dense: true, hint: '목표', onChanged: (v) => edit((x) => x.goals[i].text = v))),
+              for (var lv = 1; lv <= 5; lv++)
+                SizedBox(
+                  width: 30,
+                  child: Checkbox(
+                    visualDensity: VisualDensity.compact,
+                    activeColor: const Color(0xFFF5A623),
+                    value: m.goals[i].level >= lv,
+                    // 누른 칸까지 채우고, 이미 채워진 마지막 칸을 다시 누르면 한 칸 내려요.
+                    onChanged: (_) => edit((x) => x.goals[i].level = x.goals[i].level == lv ? lv - 1 : lv),
+                  ),
+                ),
             ]),
           ),
       ]),

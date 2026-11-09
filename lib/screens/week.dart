@@ -172,38 +172,60 @@ class _WeekScreenState extends State<WeekScreen> {
     final ys = p?.tasksOf('Y').where((t) => t.title.trim().isNotEmpty).toList() ?? [];
     final rate = p?.yDoneRate;
     final isToday = dateKey(d) == dateKey(DateTime.now());
-    return InkWell(
-      onTap: () => widget.openDay(d),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(border: Border(top: BorderSide(color: Theme.of(context).dividerColor))),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(
-            width: 56,
+    final w = store.week(monday);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: Theme.of(context).dividerColor))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: SizedBox(
+            width: 52,
             child: Text('${_days[i]} ${d.day}',
                 style: TextStyle(fontWeight: FontWeight.w700, color: isToday ? Theme.of(context).colorScheme.primary : (i >= 5 ? Colors.red.shade300 : null))),
           ),
-          Expanded(
-            child: ys.isEmpty
-                ? Text('계획 없음', style: TextStyle(color: Theme.of(context).hintColor))
-                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    for (final t in ys.take(4))
-                      Text('${t.done ? '✓' : '·'} ${t.title}', style: TextStyle(decoration: t.done ? TextDecoration.lineThrough : null, color: t.done ? Colors.grey : null)),
-                    if (ys.length > 4) Text('외 ${ys.length - 4}개', style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
-                  ]),
-          ),
-          if (rate != null)
-            SizedBox(
-              width: 44,
+        ),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SaveField(
+              key: ValueKey('wd-${w.start}-$i'),
+              value: w.days[i],
+              dense: true,
+              maxLines: null,
+              hint: '${_days[i]}요일 계획 적기',
+              onChanged: (v) => edit((x) => x.days[i] = v),
+            ),
+            if (ys.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Wrap(spacing: 8, children: [
+                  for (final t in ys.take(4))
+                    Text('${t.done ? '✓' : '·'} ${t.title}',
+                        style: TextStyle(fontSize: 12, decoration: t.done ? TextDecoration.lineThrough : null, color: t.done ? Colors.grey : Theme.of(context).hintColor)),
+                  if (ys.length > 4) Text('외 ${ys.length - 4}개', style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
+                ]),
+              ),
+          ]),
+        ),
+        if (rate != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: SizedBox(
+              width: 40,
               child: Column(children: [
-                Text('${(rate * 100).round()}%', style: TextStyle(fontWeight: FontWeight.w700, color: yColor.withValues(alpha: .4 + .6 * rate))),
+                Text('${(rate * 100).round()}%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: yColor.withValues(alpha: .4 + .6 * rate))),
                 const SizedBox(height: 4),
                 LinearProgressIndicator(value: rate, color: yColor, backgroundColor: yColor.withValues(alpha: .12)),
               ]),
             ),
-          const Icon(Icons.chevron_right, size: 18),
-        ]),
-      ),
+          ),
+        IconButton(
+          tooltip: '그날 오늘 화면으로',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.chevron_right),
+          onPressed: () => widget.openDay(d),
+        ),
+      ]),
     );
   }
 }

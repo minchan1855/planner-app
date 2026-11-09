@@ -3,9 +3,10 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../widgets/fields.dart';
 import '../widgets/memo.dart';
 
-/// 모든 메모를 날짜별로 모아 보는 화면
+/// 메모를 달력으로 보고, 날짜를 누르면 그날 메모를 보여주는 화면
 class MemosScreen extends StatefulWidget {
   const MemosScreen({super.key, required this.store, required this.openDay});
   final Store store;
@@ -16,123 +17,135 @@ class MemosScreen extends StatefulWidget {
 }
 
 class _MemosScreenState extends State<MemosScreen> {
-  String _kind = 'all';
-  String _query = '';
+  DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime selected = dateOnly(DateTime.now());
 
   @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(listenable: widget.store, builder: (context, _) => _build(context));
-  }
+  Widget build(BuildContext context) => ListenableBuilder(listenable: widget.store, builder: (context, _) => _build(context));
 
   Widget _build(BuildContext context) {
     final store = widget.store;
     final all = store.memos();
-    final list = all.where((m) => (_kind == 'all' || m.kind == _kind) && (_query.isEmpty || m.text.contains(_query))).toList();
     final byDate = <String, List<Memo>>{};
-    for (final m in list) {
+    for (final m in all) {
       byDate.putIfAbsent(m.date, () => []).add(m);
     }
-    final count = {for (final k in ['photo', 'voice', 'text']) k: all.where((m) => m.kind == k).length};
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final hint = Theme.of(context).hintColor;
+    final monthCount = all.where((m) => m.date.startsWith(monthKey(month))).length;
 
-    Widget chip(String k, String label, IconData? icon, Color? c) => Padding(
-          padding: const EdgeInsets.only(right: 6),
-          child: ChoiceChip(
-            avatar: icon == null ? null : Icon(icon, size: 16, color: c),
-            label: Text(label),
-            selected: _kind == k,
-            onSelected: (_) => setState(() => _kind = k),
-          ),
-        );
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1200),
-        child: CustomScrollView(slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Text('메모 모아보기', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 12),
-                // 종류별 개수 막대
-                if (all.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: SizedBox(
-                      height: 12,
-                      child: Row(children: [
-                        for (final k in ['photo', 'voice', 'text'])
-                          if (count[k]! > 0) Expanded(flex: count[k]!, child: Container(color: memoColor(k))),
-                      ]),
-                    ),
-                  ),
-                const SizedBox(height: 10),
-                TextField(
-                  onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-                  onChanged: (v) => setState(() => _query = v.trim()),
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: '메모 검색', border: OutlineInputBorder(), isDense: true),
-                ),
-                const SizedBox(height: 10),
-                Wrap(runSpacing: 6, children: [
-                    chip('all', '전체 ${all.length}', null, null),
-                    chip('photo', '사진 ${count['photo']}', Icons.photo_camera, photoColor),
-                    chip('voice', '음성 ${count['voice']}', Icons.mic, voiceColor),
-                    chip('text', '글 ${count['text']}', Icons.edit_note, textColor),
-                ]),
-              ]),
-            ),
-          ),
-          if (list.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Text(all.isEmpty ? '아직 메모가 없어요.\n오늘 화면 맨 아래에서 사진이나 음성으로 남겨보세요.' : '조건에 맞는 메모가 없어요.',
-                    textAlign: TextAlign.center, style: TextStyle(color: hint)),
-              ),
-            ),
-          for (final e in byDate.entries) ...[
-            SliverToBoxAdapter(
-              child: InkWell(
-                onTap: () => widget.openDay(DateTime.parse(e.key)),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                  child: Row(children: [
-                    Text(DateFormat('M월 d일 (E)', 'ko').format(DateTime.parse(e.key)), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                    const SizedBox(width: 8),
-                    Text('${e.value.length}개', style: TextStyle(color: hint)),
-                    const Spacer(),
-                    Text('그날 계획표', style: TextStyle(color: hint, fontSize: 12)),
-                    Icon(Icons.chevron_right, size: 18, color: hint),
-                  ]),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              sliver: wide
-                  ? SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 380, mainAxisExtent: 330, crossAxisSpacing: 10),
-                      delegate: SliverChildListDelegate([
-                        for (final m in e.value)
-                          SingleChildScrollView(
-                            physics: const NeverScrollableScrollPhysics(),
-                            child: MemoCard(key: ValueKey(m.id), store: store, memo: m, showDate: true, onOpenDay: () => widget.openDay(DateTime.parse(m.date))),
-                          ),
-                      ]),
-                    )
-                  : SliverList(
-                      delegate: SliverChildListDelegate([
-                        for (final m in e.value)
-                          MemoCard(key: ValueKey(m.id), store: store, memo: m, showDate: true, onOpenDay: () => widget.openDay(DateTime.parse(m.date))),
-                      ]),
-                    ),
-            ),
+    final calendar = Section(
+      title: '${month.year}년 ${month.month}월 메모',
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(visualDensity: VisualDensity.compact, onPressed: () => setState(() => month = DateTime(month.year, month.month - 1)), icon: const Icon(Icons.chevron_left)),
+        IconButton(visualDensity: VisualDensity.compact, onPressed: () => setState(() => month = DateTime(month.year, month.month + 1)), icon: const Icon(Icons.chevron_right)),
+      ]),
+      child: Column(children: [
+        _MemoCalendar(month: month, selected: selected, byDate: byDate, onTap: (d) => setState(() => selected = d)),
+        const SizedBox(height: 8),
+        Row(children: [
+          for (final k in ['photo', 'voice', 'text']) ...[
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: memoColor(k), shape: BoxShape.circle)),
+            Text(' ${switch (k) { 'photo' => '사진', 'voice' => '음성', _ => '글' }}   ', style: TextStyle(fontSize: 12, color: hint)),
           ],
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          const Spacer(),
+          Text('이번 달 $monthCount개', style: TextStyle(fontSize: 12, color: hint)),
         ]),
-      ),
+      ]),
     );
+
+    final dayMemos = (byDate[dateKey(selected)] ?? []).reversed.toList();
+    final dayList = Section(
+      title: DateFormat('M월 d일 (E)', 'ko').format(selected),
+      color: voiceColor,
+      trailing: TextButton.icon(
+        onPressed: () => widget.openDay(selected),
+        icon: const Icon(Icons.chevron_right, size: 18),
+        label: const Text('그날 계획표'),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        MemoButtons(store: store, date: selected),
+        const SizedBox(height: 8),
+        if (dayMemos.isEmpty)
+          Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Center(child: Text('이 날은 메모가 없어요', style: TextStyle(color: hint)))),
+        for (final m in dayMemos) MemoCard(key: ValueKey(m.id), store: store, memo: m),
+      ]),
+    );
+
+    if (wide) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1200),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: calendar), Expanded(child: dayList)]),
+          ),
+        ),
+      );
+    }
+    return ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [calendar, dayList]);
+  }
+}
+
+class _MemoCalendar extends StatelessWidget {
+  const _MemoCalendar({required this.month, required this.selected, required this.byDate, required this.onTap});
+  final DateTime month;
+  final DateTime selected;
+  final Map<String, List<Memo>> byDate;
+  final void Function(DateTime) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = mondayOf(DateTime(month.year, month.month, 1));
+    final last = DateTime(month.year, month.month + 1, 0);
+    final weeks = ((last.difference(start).inDays + 1) / 7).ceil();
+    final today = dateKey(DateTime.now());
+    final primary = Theme.of(context).colorScheme.primary;
+    return Column(children: [
+      Row(children: [for (final d in ['월', '화', '수', '목', '금', '토', '일']) Expanded(child: Center(child: Text(d, style: const TextStyle(fontSize: 12))))]),
+      const SizedBox(height: 4),
+      for (var w = 0; w < weeks; w++)
+        Row(children: [
+          for (var i = 0; i < 7; i++)
+            Builder(builder: (context) {
+              final d = start.add(Duration(days: w * 7 + i));
+              final k = dateKey(d);
+              final memos = byDate[k] ?? const <Memo>[];
+              final inMonth = d.month == month.month;
+              final isSel = k == dateKey(selected);
+              final kinds = {for (final m in memos) m.kind}.toList();
+              return Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => onTap(d),
+                  child: Container(
+                    height: 52,
+                    margin: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      color: isSel ? primary.withValues(alpha: .15) : (memos.isNotEmpty ? voiceColor.withValues(alpha: .05) : null),
+                      border: k == today ? Border.all(color: primary, width: 1.5) : null,
+                    ),
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Text('${d.day}',
+                          style: TextStyle(
+                            fontWeight: isSel ? FontWeight.w800 : null,
+                            color: inMonth ? (i >= 5 ? Colors.red.shade300 : null) : Colors.grey.shade400,
+                          )),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        height: 8,
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          for (final kd in kinds)
+                            Container(width: 6, height: 6, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: memoColor(kd), shape: BoxShape.circle)),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                ),
+              );
+            }),
+        ]),
+    ]);
   }
 }

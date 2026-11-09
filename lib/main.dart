@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -81,6 +82,25 @@ class _HomeShellState extends State<HomeShell> {
       SettingsScreen(store: widget.store),
     ];
     final wide = MediaQuery.sizeOf(context).width >= 900;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        // 뒤로가기: 입력 중이면 입력창만 닫고, 다른 탭이면 오늘로, 오늘이면 앱을 닫아요.
+        final focus = FocusManager.instance.primaryFocus;
+        if (focus != null && focus.context?.findAncestorStateOfType<EditableTextState>() != null) {
+          focus.unfocus();
+        } else if (tab != 0) {
+          setState(() => tab = 0);
+        } else {
+          SystemNavigator.pop();
+        }
+      },
+      child: _scaffold(context, pages, wide),
+    );
+  }
+
+  Widget _scaffold(BuildContext context, List<Widget> pages, bool wide) {
     final body = SafeArea(child: IndexedStack(index: tab, children: pages));
     if (wide) {
       return Scaffold(
