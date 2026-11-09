@@ -1,0 +1,368 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../models.dart';
+import '../store.dart';
+import '../widgets/fields.dart';
+
+const yColor = Color(0xFFE5484D); // Y-time
+const bColor = Color(0xFF3E63DD); // B-time
+
+class TodayScreen extends StatelessWidget {
+  const TodayScreen({super.key, required this.store, required this.selected});
+  final Store store;
+  final ValueNotifier<DateTime> selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder(
+      valueListenable: selected,
+      builder: (context, d, _) => ListenableBuilder(
+        listenable: store,
+        builder: (context, _) => _DayView(key: ValueKey(dateKey(d)), store: store, date: d, selected: selected),
+      ),
+    );
+  }
+}
+
+class _DayView extends StatelessWidget {
+  const _DayView({super.key, required this.store, required this.date, required this.selected});
+  final Store store;
+  final DateTime date;
+  final ValueNotifier<DateTime> selected;
+
+  DayPlan get p => store.day(date);
+  void edit(void Function(DayPlan p) f) {
+    final x = p;
+    f(x);
+    store.saveDay(x);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final plan = p;
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final isToday = dateKey(date) == dateKey(DateTime.now());
+
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+      child: Row(children: [
+        IconButton(onPressed: () => selected.value = date.subtract(const Duration(days: 1)), icon: const Icon(Icons.chevron_left)),
+        Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () async {
+              final r = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2020), lastDate: DateTime(2100));
+              if (r != null) selected.value = r;
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(children: [
+                Text(DateFormat('yyyy. M. d. (E)', 'ko').format(date), style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                if (!isToday)
+                  TextButton(onPressed: () => selected.value = dateOnly(DateTime.now()), child: const Text('오늘로'))
+                else
+                  Text('오늘', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+              ]),
+            ),
+          ),
+        ),
+        IconButton(onPressed: () => selected.value = date.add(const Duration(days: 1)), icon: const Icon(Icons.chevron_right)),
+      ]),
+    );
+
+    final affirmation = Section(
+      title: '오늘의 확언',
+      child: SaveField(value: plan.affirmation, hint: '오늘 나에게 해주고 싶은 말', maxLines: null, onChanged: (v) => edit((p) => p.affirmation = v)),
+    );
+
+    final yBox = _TaskSection(type: 'Y', title: 'Y-time · 반드시 해야 할 일', color: yColor, plan: plan, edit: edit);
+    final bBox = _TaskSection(type: 'B', title: 'B-time · 여유 있게 할 일', color: bColor, plan: plan, edit: edit);
+    final dist = _Distribution(plan: plan, edit: edit);
+    final hours = _HourTable(plan: plan, edit: edit, wide: wide);
+
+    if (wide) {
+      return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+        Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1200), child: Column(children: [
+          header,
+          affirmation,
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(flex: 3, child: yBox),
+            Expanded(flex: 3, child: bBox),
+            Expanded(flex: 2, child: dist),
+          ]),
+          hours,
+        ]))),
+      ]);
+    }
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [header, affirmation, yBox, bBox, dist, hours]);
+  }
+}
+
+class _TaskSection extends StatelessWidget {
+  const _TaskSection({required this.type, required this.title, required this.color, required this.plan, required this.edit});
+  final String type;
+  final String title;
+  final Color color;
+  final DayPlan plan;
+  final void Function(void Function(DayPlan)) edit;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = plan.tasksOf(type);
+    return Section(
+      title: title,
+      color: color,
+      trailing: IconButton(
+        tooltip: '추가',
+        icon: const Icon(Icons.add_circle_outline),
+        onPressed: () => edit((p) => p.tasks.add(PlanTask(type: type, priority: list.length + 1))),
+      ),
+      child: list.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('＋ 버튼으로 할 일을 추가하세요', style: TextStyle(color: Theme.of(context).hintColor)),
+            )
+          : Column(children: [for (final t in list) _TaskRow(key: ValueKey(t.id), task: t, color: color, edit: edit)]),
+    );
+  }
+}
+
+class _TaskRow extends StatelessWidget {
+  const _TaskRow({super.key, required this.task, required this.color, required this.edit});
+  final PlanTask task;
+  final Color color;
+  final void Function(void Function(DayPlan)) edit;
+
+  void _set(void Function(PlanTask t) f) => edit((p) => f(p.tasks.firstWhere((x) => x.id == task.id)));
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      PopupMenuButton<int>(
+        tooltip: '우선순위',
+        initialValue: task.priority,
+        onSelected: (v) => _set((t) => t.priority = v),
+        itemBuilder: (_) => [for (var i = 1; i <= 9; i++) PopupMenuItem(value: i, child: Text('우선순위 $i'))],
+        child: CircleAvatar(radius: 13, backgroundColor: color.withValues(alpha: .15), child: Text('${task.priority}', style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13))),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: SaveField(
+          value: task.title,
+          hint: '할 일',
+          dense: true,
+          style: task.done ? const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey) : null,
+          onChanged: (v) => _set((t) => t.title = v),
+        ),
+      ),
+      PopupMenuButton<int>(
+        tooltip: '예상시간',
+        onSelected: (v) => _set((t) => t.minutes = v),
+        itemBuilder: (_) => [for (final m in [10, 15, 20, 30, 45, 60, 90, 120, 180, 240]) PopupMenuItem(value: m, child: Text(fmtMinutes(m)))],
+        child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Text(fmtMinutes(task.minutes), style: const TextStyle(fontSize: 13))),
+      ),
+      IconButton(
+        tooltip: task.alarm == null ? '알람 맞추기' : '알람 ${task.alarm}',
+        visualDensity: VisualDensity.compact,
+        onPressed: () async {
+          if (task.alarm != null) {
+            final clear = await showDialog<bool>(
+              context: context,
+              builder: (c) => AlertDialog(
+                title: Text('알람 ${task.alarm}'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('알람 끄기')),
+                  TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('시간 바꾸기')),
+                ],
+              ),
+            );
+            if (clear == null) return;
+            if (clear) return _set((t) => t.alarm = null);
+          }
+          if (!context.mounted) return;
+          final r = await pickTime(context, task.alarm);
+          if (r != null) _set((t) => t.alarm = r);
+        },
+        icon: task.alarm == null
+            ? const Icon(Icons.alarm_add_outlined, size: 20)
+            : Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.alarm_on, size: 18, color: color),
+                const SizedBox(width: 2),
+                Text(task.alarm!, style: TextStyle(fontSize: 12, color: color)),
+              ]),
+      ),
+      Checkbox(value: task.done, activeColor: color, onChanged: (v) => _set((t) => t.done = v ?? false)),
+      IconButton(
+        tooltip: '삭제',
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(Icons.close, size: 18),
+        onPressed: () => edit((p) => p.tasks.removeWhere((x) => x.id == task.id)),
+      ),
+    ]);
+  }
+}
+
+class _Distribution extends StatelessWidget {
+  const _Distribution({required this.plan, required this.edit});
+  final DayPlan plan;
+  final void Function(void Function(DayPlan)) edit;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = plan.activeMinutes, y = plan.minutesOf('Y'), b = plan.minutesOf('B');
+    final free = total - y - b;
+    Widget row(String label, Widget value, [Color? c]) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(children: [
+            if (c != null) Container(width: 10, height: 10, margin: const EdgeInsets.only(right: 6), decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+            Expanded(child: Text(label)),
+            value,
+          ]),
+        );
+    Widget timeBtn(String v, void Function(String) set) => TextButton(
+          onPressed: () async {
+            final r = await pickTime(context, v);
+            if (r != null) set(r);
+          },
+          child: Text(v),
+        );
+    return Section(
+      title: '시간 분배',
+      child: Column(children: [
+        row('기상시간', timeBtn(plan.wake, (v) => edit((p) => p.wake = v))),
+        row('취침시간', timeBtn(plan.sleep, (v) => edit((p) => p.sleep = v))),
+        const Divider(),
+        row('총 활동시간', Text(fmtMinutes(total), style: const TextStyle(fontWeight: FontWeight.w700))),
+        row('Y-time', Text(fmtMinutes(y)), yColor),
+        row('B-time', Text(fmtMinutes(b)), bColor),
+        row('Free time', Text(fmtMinutes(free), style: TextStyle(color: free < 0 ? Colors.red : null)), Colors.grey),
+        if (total > 0) ...[
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: 10,
+              child: Row(children: [
+                if (y > 0) Expanded(flex: y, child: Container(color: yColor)),
+                if (b > 0) Expanded(flex: b, child: Container(color: bColor)),
+                if (free > 0) Expanded(flex: free, child: Container(color: Colors.grey.shade300)),
+              ]),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+
+class _HourTable extends StatelessWidget {
+  const _HourTable({required this.plan, required this.edit, required this.wide});
+  final DayPlan plan;
+  final void Function(void Function(DayPlan)) edit;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    return Section(
+      title: '오늘 계획표',
+      child: Column(children: [
+        if (wide)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(children: const [
+              SizedBox(width: 96, child: Text('시간', style: TextStyle(fontWeight: FontWeight.w600))),
+              Expanded(flex: 4, child: Text('해야 할 일', style: TextStyle(fontWeight: FontWeight.w600))),
+              SizedBox(width: 40),
+              Expanded(flex: 4, child: Text('실제 한 일', style: TextStyle(fontWeight: FontWeight.w600))),
+              SizedBox(width: 120, child: Text('평가', style: TextStyle(fontWeight: FontWeight.w600))),
+              Expanded(flex: 3, child: Text('리뷰', style: TextStyle(fontWeight: FontWeight.w600))),
+            ]),
+          ),
+        for (var i = 0; i < plan.slots.length; i++) _SlotRow(key: ValueKey('${plan.date}-${plan.slots[i].hour}'), index: i, slot: plan.slots[i], edit: edit, wide: wide),
+      ]),
+    );
+  }
+}
+
+class _SlotRow extends StatefulWidget {
+  const _SlotRow({super.key, required this.index, required this.slot, required this.edit, required this.wide});
+  final int index;
+  final HourSlot slot;
+  final void Function(void Function(DayPlan)) edit;
+  final bool wide;
+
+  @override
+  State<_SlotRow> createState() => _SlotRowState();
+}
+
+class _SlotRowState extends State<_SlotRow> {
+  bool _open = false;
+
+  void _set(void Function(HourSlot s) f) => widget.edit((p) => f(p.slots[widget.index]));
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.slot;
+    final label = '${s.hour}:00-${s.hour + 1}:00';
+    final now = DateTime.now();
+    final current = now.hour == s.hour;
+    final alarmBtn = IconButton(
+      tooltip: s.alarm ? '알람 끄기' : '이 시간에 알람',
+      visualDensity: VisualDensity.compact,
+      icon: Icon(s.alarm ? Icons.alarm_on : Icons.alarm_off_outlined, size: 20, color: s.alarm ? Theme.of(context).colorScheme.primary : Colors.grey),
+      onPressed: () => _set((x) => x.alarm = !x.alarm),
+    );
+    final rating = SegmentedButton<String>(
+      showSelectedIcon: false,
+      emptySelectionAllowed: true,
+      style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+      segments: const [ButtonSegment(value: 'O', label: Text('O')), ButtonSegment(value: '△', label: Text('△')), ButtonSegment(value: 'X', label: Text('X'))],
+      selected: s.rating.isEmpty ? {} : {s.rating},
+      onSelectionChanged: (v) => _set((x) => x.rating = v.isEmpty ? '' : v.first),
+    );
+    final time = Text(label, style: TextStyle(fontSize: 13, fontWeight: current ? FontWeight.w700 : null, color: current ? Theme.of(context).colorScheme.primary : null));
+
+    if (widget.wide) {
+      return Container(
+        decoration: BoxDecoration(border: Border(top: BorderSide(color: Theme.of(context).dividerColor))),
+        child: Row(children: [
+          SizedBox(width: 96, child: time),
+          Expanded(flex: 4, child: SaveField(value: s.plan, dense: true, hint: '해야 할 일', onChanged: (v) => _set((x) => x.plan = v))),
+          SizedBox(width: 40, child: alarmBtn),
+          Expanded(flex: 4, child: SaveField(value: s.actual, dense: true, hint: '실제 한 일', onChanged: (v) => _set((x) => x.actual = v))),
+          SizedBox(width: 120, child: rating),
+          const SizedBox(width: 12),
+          Expanded(flex: 3, child: SaveField(value: s.review, dense: true, hint: '리뷰', onChanged: (v) => _set((x) => x.review = v))),
+        ]),
+      );
+    }
+
+    final hasResult = s.actual.isNotEmpty || s.rating.isNotEmpty || s.review.isNotEmpty;
+    return Container(
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: Theme.of(context).dividerColor))),
+      child: Column(children: [
+        Row(children: [
+          SizedBox(width: 92, child: time),
+          Expanded(child: SaveField(value: s.plan, dense: true, hint: '해야 할 일', onChanged: (v) => _set((x) => x.plan = v))),
+          alarmBtn,
+          IconButton(
+            tooltip: '실제 한 일·평가',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(_open ? Icons.expand_less : (hasResult ? Icons.task_alt : Icons.expand_more), size: 20, color: hasResult && !_open ? Colors.green : null),
+            onPressed: () => setState(() => _open = !_open),
+          ),
+        ]),
+        if (_open)
+          Padding(
+            padding: const EdgeInsets.only(left: 92, bottom: 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SaveField(value: s.actual, dense: true, hint: '실제 한 일', onChanged: (v) => _set((x) => x.actual = v)),
+              Row(children: [const Text('평가  '), rating]),
+              SaveField(value: s.review, dense: true, hint: '리뷰', onChanged: (v) => _set((x) => x.review = v)),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
