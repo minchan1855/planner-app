@@ -47,6 +47,7 @@ class PlanTask {
   String? alarm; // "HH:mm" (예전 버전 호환용)
   String? start; // "HH:mm" 언제부터
   String? end; // "HH:mm" 언제까지
+  String rating = ''; // '', 'O', '△', 'X'
 
   PlanTask({String? id, required this.type, this.priority = 1, this.title = '', this.minutes = 30, this.done = false, this.alarm, this.start, this.end})
       : id = id ?? newId();
@@ -70,9 +71,9 @@ class PlanTask {
         alarm: j['alarm'],
         start: j['start'],
         end: j['end'],
-      );
+      )..rating = j['rating'] ?? '';
   Map<String, dynamic> toJson() =>
-      {'id': id, 'type': type, 'priority': priority, 'title': title, 'minutes': minutes, 'done': done, 'alarm': alarm, 'start': start, 'end': end};
+      {'id': id, 'type': type, 'priority': priority, 'title': title, 'minutes': minutes, 'done': done, 'alarm': alarm, 'start': start, 'end': end, 'rating': rating};
 }
 
 class HourSlot {

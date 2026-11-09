@@ -91,16 +91,39 @@ class _WeekScreenState extends State<WeekScreen> {
     final weekFixed = Section(
       title: '주간 고정할 일',
       color: Colors.blueGrey,
-      trailing: IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => edit((x) => x.fixed.add(''))),
+      trailing: IconButton(
+        icon: const Icon(Icons.add_circle_outline),
+        onPressed: () => edit((x) {
+          _FixedRow.justAdded.add('${x.start}-${x.fixed.length}');
+          x.fixed.add('');
+        }),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (var i = 0; i < w.fixed.length; i++)
-          Row(children: [
-            const Icon(Icons.push_pin, size: 16, color: Colors.blueGrey),
-            const SizedBox(width: 8),
-            Expanded(child: SaveField(key: ValueKey('wf-${w.start}-$i-${w.fixed.length}'), value: w.fixed[i], dense: true, hint: '매일 볼 고정할 일', onChanged: (v) => edit((x) => x.fixed[i] = v))),
-            IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: () => edit((x) => x.fixed.removeAt(i))),
-          ]),
-        Text(w.fixed.isEmpty ? '여기 적은 일은 이번 주 매일 오늘 화면에 보여요' : '오늘 화면에도 보여요 · 다음 주로 이어져요',
+        if (w.fixed.isNotEmpty)
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            proxyDecorator: (child, _, _) => Material(elevation: 4, borderRadius: BorderRadius.circular(8), child: child),
+            onReorderItem: (from, to) => edit((x) {
+              final t = x.fixed.removeAt(from);
+              x.fixed.insert(to, t);
+            }),
+            children: [
+              for (var i = 0; i < w.fixed.length; i++)
+                ReorderableDelayedDragStartListener(
+                  key: ValueKey('wfr-${w.start}-$i'),
+                  index: i,
+                  child: _FixedRow(
+                    text: w.fixed[i],
+                    startEditing: _FixedRow.justAdded.remove('${w.start}-$i'),
+                    onChanged: (v) => edit((x) => x.fixed[i] = v),
+                    onDelete: () => edit((x) => x.fixed.removeAt(i)),
+                  ),
+                ),
+            ],
+          ),
+        Text(w.fixed.isEmpty ? '여기 적은 일은 이번 주 매일 오늘 화면에 보여요' : '꾹 눌러 순서를 바꿀 수 있어요 · 오늘 화면에도 보여요',
             style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
       ]),
     );
@@ -172,6 +195,8 @@ class _WeekScreenState extends State<WeekScreen> {
     final ys = p?.tasksOf('Y').where((t) => t.title.trim().isNotEmpty).toList() ?? [];
     final rate = p?.yDoneRate;
     final isToday = dateKey(d) == dateKey(DateTime.now());
+    final past = d.isBefore(dateOnly(DateTime.now()));
+    final missed = ys.where((t) => !t.done).toList();
     final w = store.week(monday);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -195,7 +220,20 @@ class _WeekScreenState extends State<WeekScreen> {
               hint: '${_days[i]}요일 계획 적기',
               onChanged: (v) => edit((x) => x.days[i] = v),
             ),
-            if (ys.isNotEmpty)
+            if (ys.isNotEmpty && past) ...[
+              if (missed.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: Text('✓ 반드시 할 일을 다 끝냈어요', style: TextStyle(fontSize: 12, color: Color(0xFF30A46C))),
+                )
+              else
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: yColor.withValues(alpha: .08), borderRadius: BorderRadius.circular(6)),
+                  child: Text('못한 일: ${missed.map((t) => t.title).join(', ')}', style: const TextStyle(fontSize: 12, color: yColor)),
+                ),
+            ] else if (ys.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Wrap(spacing: 8, children: [
@@ -277,6 +315,58 @@ class _WeekSummary extends StatelessWidget {
           for (final h in habits)
             ProgressRow(label: h.name, value: h.checks.where((c) => c).length / 7, color: const Color(0xFF30A46C), trailing: '${h.checks.where((c) => c).length}/7'),
         ],
+      ]),
+    );
+  }
+}
+
+class _FixedRow extends StatefulWidget {
+  const _FixedRow({required this.text, required this.startEditing, required this.onChanged, required this.onDelete});
+  final String text;
+  final bool startEditing;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onDelete;
+
+  static final Set<String> justAdded = {};
+
+  @override
+  State<_FixedRow> createState() => _FixedRowState();
+}
+
+class _FixedRowState extends State<_FixedRow> {
+  late bool _editing = widget.startEditing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.transparent,
+      child: Row(children: [
+        const Icon(Icons.push_pin, size: 16, color: Colors.blueGrey),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _editing
+              ? SaveField(
+                  value: widget.text,
+                  dense: true,
+                  autofocus: true,
+                  hint: '매일 볼 고정할 일',
+                  onChanged: widget.onChanged,
+                  onSubmitted: (_) => setState(() => _editing = false),
+                  onFocusLost: () {
+                    if (mounted) setState(() => _editing = false);
+                  },
+                )
+              : GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _editing = true),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Text(widget.text.isEmpty ? '매일 볼 고정할 일' : widget.text,
+                        style: TextStyle(color: widget.text.isEmpty ? Theme.of(context).hintColor : null)),
+                  ),
+                ),
+        ),
+        IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: widget.onDelete),
       ]),
     );
   }

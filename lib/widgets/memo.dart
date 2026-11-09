@@ -59,16 +59,21 @@ class MemoButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     final camera = !kIsWeb;
     Widget btn(IconData icon, String label, Color c, VoidCallback onTap) => Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                side: BorderSide(color: c.withValues(alpha: .5)),
-                foregroundColor: c,
-              ),
-              onPressed: onTap,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon), const SizedBox(height: 4), Text(label, style: const TextStyle(fontSize: 12))]),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: c.withValues(alpha: .12), border: Border.all(color: c.withValues(alpha: .5))),
+                  child: Icon(icon, color: c),
+                ),
+                const SizedBox(height: 6),
+                Text(label, style: TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.w600)),
+              ]),
             ),
           ),
         );

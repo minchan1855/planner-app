@@ -21,7 +21,32 @@ class SettingsScreen extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
               child: Column(children: [
-                Section(title: '계정과 동기화', child: _Account(store: store)),
+                Card(
+                  margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                  child: ListTile(
+                    leading: Icon(store.user == null ? Icons.cloud_off : Icons.cloud_done,
+                        color: store.user == null ? Colors.grey : Theme.of(context).colorScheme.primary),
+                    title: const Text('계정과 동기화', style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(store.user == null ? '로그인하면 휴대폰과 컴퓨터 기록이 맞춰져요' : '${store.user!.email} 로 로그인됨'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => Scaffold(
+                        appBar: AppBar(title: const Text('계정과 동기화')),
+                        body: ListView(children: [
+                          Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 640),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: ListenableBuilder(listenable: store, builder: (_, _) => _Account(store: store)),
+                              ),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    )),
+                  ),
+                ),
                 Section(
                   title: '알람',
                   child: Column(children: [

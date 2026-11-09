@@ -81,11 +81,6 @@ class Alarms {
         final at = d.add(Duration(minutes: m));
         await add(at.subtract(lead), t.type == 'Y' ? '꼭 할 일 · $leadText' : '여유 있게 할 일 · $leadText', t.title);
       }
-      for (final sl in p.slots) {
-        if (!sl.alarm || sl.plan.trim().isEmpty) continue;
-        final at = d.add(Duration(hours: sl.hour));
-        await add(at.subtract(lead), '${sl.hour}:00 계획 · $leadText', sl.plan);
-      }
     }
     if (s.weeklyReviewAlarm) {
       final sunday = mondayOf(today).add(const Duration(days: 6, hours: 21));
