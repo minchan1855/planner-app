@@ -150,8 +150,16 @@ class _RangeDialog extends StatefulWidget {
 
 class _RangeDialogState extends State<_RangeDialog> {
   late final _a = TextEditingController(text: widget.start ?? '');
-  late final _b = TextEditingController(text: widget.end ?? '');
+  late int _len = () {
+    final a = widget.start, b = widget.end;
+    if (a == null || b == null) return 60;
+    return _mins(b) - _mins(a);
+  }();
   String? _err;
+
+  static const _lens = [15, 30, 45, 60, 90, 120, 150, 180, 240, 300];
+
+  static int _mins(String s) => int.parse(s.substring(0, 2)) * 60 + int.parse(s.substring(3));
 
   /// "9", "930", "9:30", "0930" → "09:30"
   static String? norm(String s) {
@@ -169,34 +177,51 @@ class _RangeDialogState extends State<_RangeDialog> {
       h = int.parse(s.substring(0, s.length - 2));
       m = int.parse(s.substring(s.length - 2));
     }
-    if (h < 0 || h > 24 || m < 0 || m > 59 || (h == 24 && m > 0)) return null;
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
     return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
   }
 
-  void _ok() {
-    final a = norm(_a.text), b = norm(_b.text);
-    if (a == null || b == null) return setState(() => _err = '시간을 9:00 이나 0930 처럼 적어주세요');
-    if (parseHmLocal(b) <= parseHmLocal(a)) return setState(() => _err = '끝나는 시간이 시작보다 늦어야 해요');
-    Navigator.pop(context, (a, b));
-  }
+  static String _fmt(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  static String _lenText(int m) => m < 60 ? '$m분' : (m % 60 == 0 ? '${m ~/ 60}시간' : '${m ~/ 60}시간 ${m % 60}분');
 
-  static int parseHmLocal(String s) => int.parse(s.substring(0, 2)) * 60 + int.parse(s.substring(3));
+  void _ok() {
+    final a = norm(_a.text);
+    if (a == null) return setState(() => _err = '시작 시간을 9:00 이나 0930 처럼 적어주세요');
+    final end = _mins(a) + _len;
+    if (end > 24 * 60) return setState(() => _err = '자정을 넘길 수 없어요');
+    Navigator.pop(context, (a, _fmt(end)));
+  }
 
   @override
   Widget build(BuildContext context) {
-    InputDecoration dec(String l) => InputDecoration(labelText: l, hintText: '예: 9:00', border: const OutlineInputBorder());
+    final a = norm(_a.text);
     return AlertDialog(
       title: const Text('언제 할까요?'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [
-          Expanded(child: TextField(controller: _a, autofocus: true, keyboardType: TextInputType.datetime, decoration: dec('시작'), onTapOutside: unfocusOutside)),
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('~')),
-          Expanded(child: TextField(controller: _b, keyboardType: TextInputType.datetime, decoration: dec('끝'), onTapOutside: unfocusOutside, onSubmitted: (_) => _ok())),
+      content: SizedBox(
+        width: 400,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(
+            controller: _a,
+            autofocus: widget.start == null,
+            keyboardType: TextInputType.datetime,
+            onTapOutside: unfocusOutside,
+            onChanged: (_) => setState(() => _err = null),
+            decoration: const InputDecoration(labelText: '시작 시간', hintText: '예: 9:00 또는 0930', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 14),
+          const Text('걸리는 시간'),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            for (final l in {..._lens, _len}.toList()..sort())
+              ChoiceChip(label: Text(_lenText(l)), selected: _len == l, onSelected: (_) => setState(() => _len = l)),
+          ]),
+          const SizedBox(height: 10),
+          if (a != null) Text('$a ~ ${_fmt((_mins(a) + _len).clamp(0, 24 * 60))}', style: const TextStyle(fontWeight: FontWeight.w700)),
+          if (_err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_err!, style: const TextStyle(color: Colors.red))),
+          const SizedBox(height: 4),
+          Text('오늘 계획표에도 같이 표시돼요', style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
         ]),
-        if (_err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_err!, style: const TextStyle(color: Colors.red))),
-        const SizedBox(height: 8),
-        Text('오늘 계획표의 그 시간 칸에도 같이 적혀요', style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
-      ]),
+      ),
       actions: [
         if (widget.start != null) TextButton(onPressed: () => Navigator.pop(context, ('', '')), child: const Text('시간 지우기')),
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),

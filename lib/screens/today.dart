@@ -786,19 +786,15 @@ class _HourTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final table = DayTimetable(plan: plan, edit: edit, hourHeight: wide ? 60 : 54);
     return Section(
       title: '오늘 계획표',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '빈 시간을 누르면 적을 수 있고, 블록을 누르면 평가·알람을 정해요',
-            style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor),
-          ),
-          const SizedBox(height: 8),
-          DayTimetable(plan: plan, edit: edit, hourHeight: wide ? 60 : 54),
-        ],
-      ),
+      trailing: IconButton(tooltip: '계획 추가', icon: const Icon(Icons.add_circle_outline), onPressed: () => table.openAdd(context)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('＋ 로 계획을 추가하고, 블록을 누르면 평가·알람을 정해요', style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor)),
+        const SizedBox(height: 8),
+        table,
+      ]),
     );
   }
 }

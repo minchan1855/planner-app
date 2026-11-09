@@ -137,33 +137,6 @@ class _WeekScreenState extends State<WeekScreen> {
       ]),
     );
 
-    final habits = Section(
-      title: '습관 체크',
-      trailing: IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => edit((x) => x.habits.add(Habit()))),
-      child: Column(children: [
-        Row(children: [
-          const Expanded(child: SizedBox()),
-          for (final d in _days) SizedBox(width: 34, child: Center(child: Text(d, style: const TextStyle(fontSize: 12)))),
-          const SizedBox(width: 36),
-        ]),
-        for (var hi = 0; hi < w.habits.length; hi++)
-          Row(children: [
-            Expanded(child: SaveField(key: ValueKey('h-${w.habits[hi].id}'), value: w.habits[hi].name, dense: true, hint: '습관 이름', onChanged: (v) => edit((x) => x.habits[hi].name = v))),
-            for (var d = 0; d < 7; d++)
-              SizedBox(
-                width: 34,
-                child: Checkbox(
-                  visualDensity: VisualDensity.compact,
-                  value: w.habits[hi].checks[d],
-                  onChanged: (v) => edit((x) => x.habits[hi].checks[d] = v ?? false),
-                ),
-              ),
-            SizedBox(width: 36, child: IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: () => edit((x) => x.habits.removeAt(hi)))),
-          ]),
-        if (w.habits.isEmpty) Padding(padding: const EdgeInsets.all(8), child: Text('예: 운동, 독서, 물 2L', style: TextStyle(color: Theme.of(context).hintColor))),
-      ]),
-    );
-
     final review = Section(
       title: '주간 회고',
       child: Column(children: [
@@ -180,13 +153,13 @@ class _WeekScreenState extends State<WeekScreen> {
         Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1200), child: Column(children: [
           header,
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Column(children: [summary, affirmation, goals, weekFixed, habits])),
+            Expanded(child: Column(children: [summary, affirmation, goals, weekFixed])),
             Expanded(child: Column(children: [days, review])),
           ]),
         ]))),
       ]);
     }
-    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [header, summary, affirmation, goals, weekFixed, days, habits, review]);
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [header, summary, affirmation, goals, weekFixed, days, review]);
   }
 
   Widget _dayTile(BuildContext context, DateTime d, int i) {
@@ -293,7 +266,6 @@ class _WeekSummary extends StatelessWidget {
       rates.add(ys.isEmpty ? null : ys.where((t) => t.done).length / ys.length);
     }
     final todayIdx = DateTime.now().difference(monday).inDays;
-    final habits = week.habits.where((h) => h.name.trim().isNotEmpty).toList();
     return Section(
       title: '이번 주 한눈에',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -310,11 +282,6 @@ class _WeekSummary extends StatelessWidget {
                 return d >= 0 && d < 7;
               }).length}', label: '메모'),
         ]),
-        if (habits.isNotEmpty) ...[
-          const Divider(height: 24),
-          for (final h in habits)
-            ProgressRow(label: h.name, value: h.checks.where((c) => c).length / 7, color: const Color(0xFF30A46C), trailing: '${h.checks.where((c) => c).length}/7'),
-        ],
       ]),
     );
   }
